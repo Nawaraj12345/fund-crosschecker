@@ -18,27 +18,26 @@ ENV/
 # --- Environment variables / secrets ---
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 secrets.*
 credentials.*
 
-# --- Downloaded fund documents (NEVER commit the PDFs to a public repo) ---
-# Store the links + a download script instead; keep an answer-key spreadsheet
-# out of here too if it contains anything you don't want public.
+# --- Downloaded fund documents (copyrighted: never commit the PDFs) ---
+# Their links and hashes go in data/sources.csv instead.
 pdfs/
 documents/
 *.pdf
 
-# --- Data files (don't commit raw/sensitive fund data) ---
-*.csv
-*.xlsx
-*.xls
-*.parquet
-data/
+# --- Local databases ---
 *.db
 *.sqlite
 *.sqlite3
+
+# --- Spreadsheet lock files ---
+~$*
+.~lock.*#
 
 # --- Jupyter ---
 .ipynb_checkpoints/
