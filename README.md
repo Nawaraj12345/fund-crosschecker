@@ -48,11 +48,11 @@ The PDFs aren't in the repo because they're copyrighted. Download each one from 
 Run these from the project folder:
 
 ```
-.venv/bin/python -m fundcrosschecker kid pdfs/      # extract every *_kid.pdf
-.venv/bin/python -m fundcrosschecker score          # compare with the answer key
-.venv/bin/python -m fundcrosschecker kid pdfs/unseen/     # the unseen trusts
-.venv/bin/python -m fundcrosschecker score --unseen       # scored apart from the development score
-.venv/bin/python -m pytest                        # run the tests
+.venv/bin/python -m fundcrosschecker kid pdfs/          # extract every *_kid.pdf
+.venv/bin/python -m fundcrosschecker score              # compare with the answer key
+.venv/bin/python -m fundcrosschecker kid pdfs/unseen/   # the unseen trusts
+.venv/bin/python -m fundcrosschecker score --unseen     # scored apart from the development score
+.venv/bin/python -m pytest                              # run the tests
 ```
 
 The tests don't need the PDFs. The one test that reads a real KID skips itself when `pdfs/` isn't there.

@@ -206,6 +206,11 @@ def test_each_answer_key_only_affects_its_own_score(project):
     assert git_commit(project, UNSEEN_INPUTS).endswith("+uncommitted")
     assert "+" not in git_commit(project)
 
+    (project / "data" / "unseen" / "answer_key.csv").write_text("fund_id\n")  # back as committed
+    (project / "data" / "answer_key.csv").write_text("fund_id,changed\n")
+    assert git_commit(project).endswith("+uncommitted")
+    assert "+" not in git_commit(project, UNSEEN_INPUTS)
+
 
 # --- the command's error messages ---------------------------------------------------
 
