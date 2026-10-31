@@ -1,12 +1,12 @@
 """Extract a fund factsheet's figures with Claude (Story 2.1).
 
-Factsheets have no fixed layout (19 providers, 19 layouts), so instead of rules
-the page text goes to Claude, which answers each field with the value, the page
-and the exact words it read it from. Every answer then goes through the same
-checks as the KID extractor (checks.py): a value whose quote isn't on that page,
-isn't in its quote, or has the wrong format becomes not_found, with the reason
-in the notes. So Claude can miss a figure, but it can't put one in the output
-that the PDF doesn't show.
+Factsheets have no fixed layout (the 19 here come from 16 providers, each with
+its own), so instead of rules the page text goes to Claude, which answers each
+field with the value, the page and the exact words it read it from. Every answer
+then goes through the same checks as the KID extractor (checks.py): a value
+whose quote isn't on that page, isn't in its quote, or has the wrong format
+becomes not_found, with the reason in the notes. So Claude can miss a figure,
+but it can't put one in the output that the PDF doesn't show.
 
 Answers are cached in output/llm/ by the PDF's hash, the model and the prompt,
 so running again costs nothing and gives the same answers. Changing the prompt
@@ -27,7 +27,7 @@ EFFORT = "high"  # reading a messy layout carefully matters more than speed here
 FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",
           "transaction_cost_pct", "total_cost_pct", "risk_score", "risk_method", "doc_date"]
 
-# The rules are data/README.md's answer key rules, so the tool and the answer key read
+# Based on data/README.md's answer key rules, so the tool and the answer key read
 # factsheets the same way.
 SYSTEM_PROMPT = """You read UK fund factsheets and record exactly what they print.
 
@@ -110,7 +110,7 @@ def prompt_text(pages: list[str]) -> str:
 
 
 def cache_key(pdf_sha256: str) -> str:
-    """Changes when the PDF, the model, the prompt or the answer format changes."""
+    """Changes when the PDF, the model, the effort, the prompt or the answer format changes."""
     setup = json.dumps([MODEL, EFFORT, SYSTEM_PROMPT, FactsheetAnswers.model_json_schema()], sort_keys=True)
     return f"{pdf_sha256[:16]}-{hashlib.sha256(setup.encode()).hexdigest()[:12]}"
 

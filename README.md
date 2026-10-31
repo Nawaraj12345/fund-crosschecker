@@ -21,7 +21,7 @@ The project is in Sprint 2. It reads trust KIDs with rules, and factsheets with 
 - **Reads cost tables**, including the awkward layouts: rows where the description column is mixed in, labels split over two lines, figures given as N/A or only as a £ amount. When the KID states a charge somewhere else, such as in its text, the notes record it with its page.
 - **Scores itself** against an answer key built from the PDFs (see [The data](#the-data)). On the 14 trust KIDs the rules were written from: **126 of 140 values correct, 0 wrong, 0 made up**. That's a development score, not yet a test on unseen documents; a test on 10 new trusts is planned. The other 14 are `not_found` so far: 9 dates written in other ways, and the names (plus two share classes) of the 3 KIDs without a "Product" heading.
 
-**Factsheets (new, not scored yet):** factsheets come in a different layout from every provider, so instead of rules each factsheet's text goes to Claude (`claude-opus-5-5`), which answers each of the same 10 fields with the value, the page and the exact words it read it from. Every answer then goes through the same format checks and quote check as the KIDs, so Claude can miss a figure but can't put one in the output that the PDF doesn't show. Answers are cached by the PDF's hash, the model and the prompt, so re-running costs nothing and gives the same answers. The first scored run is next.
+**Factsheets:** factsheets come in a different layout from every provider, so instead of rules each factsheet's text goes to Claude (`claude-opus-5-5`), which answers each of the same 10 fields with the value, the page and the exact words it read it from. Every answer then goes through the same format checks and quote check as the KIDs, so Claude can miss a figure but can't put one in the output that the PDF doesn't show. Answers are cached by the PDF's hash, the model and the prompt, so re-running costs nothing and gives the same answers. On the 19 development factsheets (16 providers) the first run scored **167 of 190 values correct, 7 wrong, 0 made up**; the other 16 are `not_found`. Most of those 16 are the checks being stricter than factsheet text needs (footnote numbers stuck to labels, dates such as 30-Sep-2026), and the 7 wrong values come from the prompt's wording, such as the share class or a ticker left in the fund name.
 
 Not built yet: the factsheet-versus-KID comparison itself, and a web page.
 
@@ -70,7 +70,7 @@ Run these from the project folder:
 
 The tests don't need the PDFs or an API key: the one test that reads a real KID skips itself when `pdfs/` isn't there, and the factsheet tests use a stand-in for Claude.
 
-The `factsheet` command needs your own Anthropic API key (create one at https://console.anthropic.com/, then `export ANTHROPIC_API_KEY=...` in the terminal). Reading all 19 factsheets the first time costs roughly $1–2; after that the cached answers are used.
+The `factsheet` command needs your own Anthropic API key (create one at https://platform.claude.com/, then run `export ANTHROPIC_API_KEY=...` in the terminal you run it from, or add that line to `~/.zshrc` so every new terminal has it). Reading all 19 factsheets the first time should cost roughly $1–2 (an estimate from the size of their text); after that the cached answers are used.
 
 ## The data
 
@@ -97,6 +97,6 @@ pdfs/              the downloaded PDFs, never committed
 
 | When | What |
 |---|---|
-| Sprint 2 (to 29 Nov 2026) | Test on 10 trusts the tool hasn't seen. First scored run of the factsheets. Then the trust KIDs' other date and name wordings |
+| Sprint 2 (to 29 Nov 2026) | Test on 10 trusts the tool hasn't seen. Factsheets: clearer prompt wording, then checks that allow for factsheet text (after the unseen test). Then the trust KIDs' other date and name wordings |
 | Sprint 3 (30 Nov – 13 Dec 2026) | The ordinary funds' KIIDs (the controls), then the comparison: match, mismatch, or can't compare, with the likely reason |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |

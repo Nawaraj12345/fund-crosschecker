@@ -118,7 +118,7 @@ def extract_all(paths: list[Path], doc_type: str, extract) -> int:
     if failed:
         print(f"{failed} file(s) skipped or failed (see above).", file=sys.stderr)
     if no_key:
-        print("No Anthropic API key found. Create one at https://console.anthropic.com/ and run\n"
+        print("No Anthropic API key found. Create one at https://platform.claude.com/ and run\n"
               "    export ANTHROPIC_API_KEY=...\n"
               "in this terminal first (factsheets already in output/llm/ don't need it).", file=sys.stderr)
     return 1 if failed else 0
