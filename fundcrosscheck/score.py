@@ -108,13 +108,23 @@ def is_stale(extracted_csv: Path, code_dir: Path) -> bool:
     return extracted_csv.stat().st_mtime < newest_code
 
 
+SCORE_INPUTS = ("fundcrosscheck", "data/answer_key.csv")
+
+
 def git_commit(project: Path) -> str:
-    """The current commit, marked "+uncommitted" if the code or the answer key
-    has changed since, because then that commit alone can't reproduce the score."""
+    """The last commit that changed the code or the answer key: the version the score belongs to.
+
+    Commits that only touch other files (such as the score history itself) don't
+    count, so recording a score and committing it doesn't make the next run look
+    new. Marked "+uncommitted" if the code or the answer key has changed since,
+    because then that commit alone can't reproduce the score.
+    """
     try:
-        sha = _git(project, "rev-parse", "--short", "HEAD")
-        changed = _git(project, "status", "--porcelain", "--", "fundcrosscheck", "data/answer_key.csv")
+        sha = _git(project, "log", "-1", "--format=%h", "--", *SCORE_INPUTS)
+        changed = _git(project, "status", "--porcelain", "--", *SCORE_INPUTS)
     except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    if not sha:
         return "unknown"
     return f"{sha}+uncommitted" if changed else sha
 

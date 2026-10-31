@@ -147,8 +147,30 @@ def project(tmp_path):
     return tmp_path
 
 
+def head(project):
+    return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=project, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
 def test_clean_checkout_gives_the_commit(project):
-    assert git_commit(project).isalnum()
+    assert git_commit(project) == head(project)
+
+
+def test_committing_other_files_keeps_the_commit(project):
+    # Committing the score history mustn't make the next run look like new code.
+    scored = head(project)
+    (project / "results").mkdir()
+    (project / "results" / "kid_scores.csv").write_text("run_date\n")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "Recorded a score")
+    assert head(project) != scored
+    assert git_commit(project) == scored
+
+
+def test_committing_the_answer_key_moves_the_commit(project):
+    (project / "data" / "answer_key.csv").write_text("fund_id,changed\n")
+    git(project, "commit", "-q", "-am", "Changed the answer key")
+    assert git_commit(project) == head(project)
 
 
 @pytest.mark.parametrize("changed_file", ["fundcrosscheck/kid.py", "data/answer_key.csv"])
