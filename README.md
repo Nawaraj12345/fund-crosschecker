@@ -50,6 +50,8 @@ Run these from the project folder:
 ```
 .venv/bin/python -m fundcrosschecker kid pdfs/      # extract every *_kid.pdf
 .venv/bin/python -m fundcrosschecker score          # compare with the answer key
+.venv/bin/python -m fundcrosschecker kid pdfs/unseen/     # the unseen trusts
+.venv/bin/python -m fundcrosschecker score --unseen       # scored apart from the development score
 .venv/bin/python -m pytest                        # run the tests
 ```
 
@@ -59,6 +61,7 @@ The tests don't need the PDFs. The one test that reads a real KID skips itself w
 
 - `data/sources.csv`: the 38 documents (a factsheet and a KID or KIID for each of 19 funds, F01–F19), each with its link, download date and SHA-256.
 - `data/answer_key.csv`: what each document actually says, one row per document. It's the ground truth the extractor is scored against.
+- `data/unseen/`: the same two files for the unseen-trusts test (F20 onwards), trusts that were never looked at while the rules were written. Their answer key was committed before the tool was run on them.
 - `data/README.md`: the rules for every answer key column. The main rule is **record only what's printed**. `not_found` means checked and not shown; an empty cell means not checked yet.
 
 Every answer key value was checked against its PDF's text by script, and every risk score against the document's wording or its risk graphic on the rendered page. It hasn't been checked line by line by hand.
@@ -70,7 +73,7 @@ fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, che
 tests/             unit tests; the extractor's and checks' tests use real wording from the KIDs
 spikes/            the PDF library comparison
 data/              sources, answer key and their rules
-results/           score history (counts only), committed
+results/           score history (counts only), committed; the unseen trusts' in their own file
 output/            extractor output, holds text from the PDFs, never committed
 pdfs/              the downloaded PDFs, never committed
 ```

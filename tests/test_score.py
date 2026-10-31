@@ -3,11 +3,15 @@
 import csv
 import os
 import subprocess
+import sys
 
 import pytest
 
+import fundcrosschecker.__main__ as cli
+import fundcrosschecker.score as score_module
 from fundcrosschecker.common import NOT_FOUND
-from fundcrosschecker.score import SCORED_FIELDS, classify, git_commit, is_stale, record, run, score
+from fundcrosschecker.score import (SCORED_FIELDS, UNSEEN_INPUTS, classify, git_commit, is_stale, record, run,
+                                    score)
 
 
 # --- matching rules ------------------------------------------------------------
@@ -188,6 +192,21 @@ def test_outside_a_git_repo_gives_unknown(tmp_path):
     assert git_commit(tmp_path) == "unknown"
 
 
+def test_each_answer_key_only_affects_its_own_score(project):
+    # The unseen answer key changing mustn't touch the development score, and the reverse.
+    (project / "data" / "unseen").mkdir()
+    (project / "data" / "unseen" / "answer_key.csv").write_text("fund_id\n")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "Added the unseen answer key")
+    unseen_added = head(project)
+    assert git_commit(project, UNSEEN_INPUTS) == unseen_added
+    assert git_commit(project) != unseen_added
+
+    (project / "data" / "unseen" / "answer_key.csv").write_text("fund_id,changed\n")
+    assert git_commit(project, UNSEEN_INPUTS).endswith("+uncommitted")
+    assert "+" not in git_commit(project)
+
+
 # --- the command's error messages ---------------------------------------------------
 
 def test_missing_files_and_columns_are_reported(tmp_path, capsys):
@@ -229,3 +248,38 @@ def test_committed_code_is_recorded(project, capsys):
     assert run(extracted, key, results, project) == 0
     assert "Recorded in" in capsys.readouterr().out
     assert read_rows(results)[1][1] == git_commit(project)
+
+
+def test_unseen_score_ignores_changes_to_the_development_key(project, capsys):
+    (project / "data" / "unseen").mkdir()
+    extracted, key, results = scoring_files(project / "data" / "unseen")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "scoring files")
+    (project / "data" / "answer_key.csv").write_text("fund_id,changed\n")  # not part of the unseen score
+    assert run(extracted, key, results, project, inputs=UNSEEN_INPUTS) == 0
+    assert "Recorded in" in capsys.readouterr().out
+
+
+def test_missing_kids_message_names_the_right_folder(project, capsys):
+    extracted, key, results = scoring_files(project)
+    extracted.write_text("fund_id,doc_type," + ",".join(SCORED_FIELDS) + "\n")  # nothing extracted
+    with key.open("a") as f:
+        f.write("F20,kid," + ",".join(["not_found"] * len(SCORED_FIELDS)) + "\n")
+    run(extracted, key, results, project, pdf_folder="pdfs/unseen/")
+    assert "Run the extractor on pdfs/unseen/" in capsys.readouterr().out
+    assert not results.exists()
+
+
+def test_score_unseen_uses_the_unseen_files(monkeypatch):
+    calls = []
+    monkeypatch.setattr(score_module, "run", lambda **kwargs: calls.append(kwargs) or 0)
+    for argv, expected in ((["score"], {}),
+                           (["score", "--unseen"], {"key_path": score_module.UNSEEN_KEY,
+                                                    "results_path": score_module.UNSEEN_RESULTS,
+                                                    "inputs": UNSEEN_INPUTS, "pdf_folder": "pdfs/unseen/"})):
+        monkeypatch.setattr(sys, "argv", ["fundcrosschecker", *argv])
+        assert cli.main() == 0
+        assert calls.pop() == expected
+    assert score_module.UNSEEN_KEY.parts[-3:] == ("data", "unseen", "answer_key.csv")
+    assert score_module.UNSEEN_RESULTS.name == "unseen_kid_scores.csv"
+    assert score_module.UNSEEN_RESULTS != score_module.RESULTS

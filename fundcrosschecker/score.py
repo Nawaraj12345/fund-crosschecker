@@ -12,6 +12,11 @@ the code and the answer key committed) adds one row per field to
 results/kid_scores.csv, unless it's the same as the last recorded run. So every
 row can be reproduced from the commit it names. That file holds counts only, never text from the PDFs, so it's
 committed and keeps a history of the score.
+
+`score --unseen` does the same for the unseen trusts (data/unseen/answer_key.csv,
+PDFs in pdfs/unseen/), recording in results/unseen_kid_scores.csv, so their
+score is never mixed with the development score. The first recorded run there
+is the honest figure; any run after the rules change is a development score again.
 """
 
 import csv
@@ -28,6 +33,8 @@ PROJECT = Path(__file__).resolve().parent.parent
 EXTRACTED = PROJECT / "output" / "kid_extracted.csv"
 ANSWER_KEY = PROJECT / "data" / "answer_key.csv"
 RESULTS = PROJECT / "results" / "kid_scores.csv"
+UNSEEN_KEY = PROJECT / "data" / "unseen" / "answer_key.csv"
+UNSEEN_RESULTS = PROJECT / "results" / "unseen_kid_scores.csv"
 
 SCORED_FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",
                  "transaction_cost_pct", "total_cost_pct", "risk_score", "risk_method", "doc_date"]
@@ -110,9 +117,10 @@ def is_stale(extracted_csv: Path, code_dir: Path) -> bool:
 
 
 SCORE_INPUTS = ("fundcrosschecker", "data/answer_key.csv")
+UNSEEN_INPUTS = ("fundcrosschecker", "data/unseen/answer_key.csv")
 
 
-def git_commit(project: Path) -> str:
+def git_commit(project: Path, inputs: tuple[str, ...] = SCORE_INPUTS) -> str:
     """The last commit that changed the code or the answer key: the version the score belongs to.
 
     Commits that only touch other files (such as the score history itself) don't
@@ -121,8 +129,8 @@ def git_commit(project: Path) -> str:
     because then that commit alone can't reproduce the score.
     """
     try:
-        sha = _git(project, "log", "-1", "--format=%h", "--", *SCORE_INPUTS)
-        changed = _git(project, "status", "--porcelain", "--", *SCORE_INPUTS)
+        sha = _git(project, "log", "-1", "--format=%h", "--", *inputs)
+        changed = _git(project, "status", "--porcelain", "--", *inputs)
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
     if not sha:
@@ -179,10 +187,10 @@ def read_csv(path: Path) -> list[dict]:
 
 
 def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_path: Path = RESULTS,
-        project: Path = PROJECT) -> int:
-    """The `score` command."""
+        project: Path = PROJECT, inputs: tuple[str, ...] = SCORE_INPUTS, pdf_folder: str = "pdfs/") -> int:
+    """The `score` command. `inputs` are the files a score depends on; `pdf_folder` is where its KIDs are."""
     if not extracted_path.exists():
-        print(f"No {extracted_path}: run the extractor first (python -m fundcrosschecker kid pdfs/).")
+        print(f"No {extracted_path}: run the extractor first (python -m fundcrosschecker kid {pdf_folder}).")
         return 1
     if not key_path.exists():
         print(f"No answer key at {key_path}.")
@@ -200,10 +208,10 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
     print_report(results)
 
     # Only a full run of the current, committed code goes into the history, so the rows stay comparable.
-    commit = git_commit(project)
+    commit = git_commit(project, inputs)
     if not_extracted:
         print(f"\nNot recorded: {len(not_extracted)} KID(s) weren't extracted ({', '.join(not_extracted)}). "
-              "Run the extractor on pdfs/ to score them all.")
+              f"Run the extractor on {pdf_folder} to score them all.")
     elif is_stale(extracted_path, project / "fundcrosschecker"):
         print("\nNot recorded: the code changed after the extractor last ran. Run it again first.")
     elif commit.endswith("+uncommitted"):

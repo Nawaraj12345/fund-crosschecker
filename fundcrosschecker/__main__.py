@@ -3,6 +3,8 @@
     .venv/bin/python -m fundcrosschecker kid pdfs/F16_kid.pdf
     .venv/bin/python -m fundcrosschecker kid pdfs/          (every *_kid.pdf in the folder)
     .venv/bin/python -m fundcrosschecker score              (compare with the answer key)
+    .venv/bin/python -m fundcrosschecker kid pdfs/unseen/
+    .venv/bin/python -m fundcrosschecker score --unseen     (the unseen trusts, scored separately)
 
 Run these from the project folder, which is where Python finds the package.
 `kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
@@ -42,10 +44,15 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     kid_cmd = sub.add_parser("kid", help="extract figures from trust KIDs")
     kid_cmd.add_argument("paths", nargs="+", type=Path, help="KID PDFs, or folders of them")
-    sub.add_parser("score", help="compare output/kid_extracted.csv with the answer key")
+    score_cmd = sub.add_parser("score", help="compare output/kid_extracted.csv with the answer key")
+    score_cmd.add_argument("--unseen", action="store_true",
+                           help="use the unseen trusts' answer key (data/unseen/) and score history")
     args = parser.parse_args()
 
     if args.command == "score":
+        if args.unseen:
+            return score.run(key_path=score.UNSEEN_KEY, results_path=score.UNSEEN_RESULTS,
+                             inputs=score.UNSEEN_INPUTS, pdf_folder="pdfs/unseen/")
         return score.run()
 
     files, failed = kid_files(args.paths)
