@@ -4,8 +4,9 @@
     .venv/bin/python -m fundcrosschecker kid pdfs/          (every *_kid.pdf in the folder)
     .venv/bin/python -m fundcrosschecker score              (compare with the answer key)
 
+Run these from the project folder, which is where Python finds the package.
 `kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
-project folder, wherever the command is run from. The CSV holds only the KIDs
+project's output/ folder. The CSV holds only the KIDs
 from the latest run (a run that reads none leaves it as it was); JSON files
 from earlier runs are left as they are. `score` is described in score.py.
 """

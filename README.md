@@ -45,6 +45,8 @@ python3 -m venv .venv
 
 The PDFs aren't in the repo because they're copyrighted. Download each one from its link in `data/sources.csv`, save it in `pdfs/` under the name in the `local_file` column, and check it with `shasum -a 256 pdfs/<file>` against the `sha256` column. If the hash differs, it's a different version of the document (usually a newer one), and the answer key may not match it. Some sites only work in a browser.
 
+Run these from the project folder:
+
 ```
 .venv/bin/python -m fundcrosschecker kid pdfs/      # extract every *_kid.pdf
 .venv/bin/python -m fundcrosschecker score          # compare with the answer key
