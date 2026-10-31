@@ -109,7 +109,7 @@ def is_stale(extracted_csv: Path, code_dir: Path) -> bool:
     return extracted_csv.stat().st_mtime < newest_code
 
 
-SCORE_INPUTS = ("fundcrosscheck", "data/answer_key.csv")
+SCORE_INPUTS = ("fundcrosschecker", "data/answer_key.csv")
 
 
 def git_commit(project: Path) -> str:
@@ -182,7 +182,7 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
         project: Path = PROJECT) -> int:
     """The `score` command."""
     if not extracted_path.exists():
-        print(f"No {extracted_path}: run the extractor first (python -m fundcrosscheck kid pdfs/).")
+        print(f"No {extracted_path}: run the extractor first (python -m fundcrosschecker kid pdfs/).")
         return 1
     if not key_path.exists():
         print(f"No answer key at {key_path}.")
@@ -204,7 +204,7 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
     if not_extracted:
         print(f"\nNot recorded: {len(not_extracted)} KID(s) weren't extracted ({', '.join(not_extracted)}). "
               "Run the extractor on pdfs/ to score them all.")
-    elif is_stale(extracted_path, project / "fundcrosscheck"):
+    elif is_stale(extracted_path, project / "fundcrosschecker"):
         print("\nNot recorded: the code changed after the extractor last ran. Run it again first.")
     elif commit.endswith("+uncommitted"):
         print("\nNot recorded: the code or the answer key has changes that aren't committed. Commit them, then score again.")

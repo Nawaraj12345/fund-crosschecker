@@ -25,11 +25,11 @@ Not built yet: factsheets, the factsheet-versus-KID comparison itself, and a web
 
 ```
 KID (PDF)  ->  text, page by page (pdfplumber)
-           ->  rules for each field (fundcrosscheck/kid.py)
-           ->  format checks and quote check (fundcrosscheck/checks.py)
+           ->  rules for each field (fundcrosschecker/kid.py)
+           ->  format checks and quote check (fundcrosschecker/checks.py)
            ->  output/kid/<fund>_kid.json   (each value with its page and quote)
                output/kid_extracted.csv      (same columns as the answer key)
-           ->  scorer (fundcrosscheck/score.py)  ->  results/kid_scores.csv
+           ->  scorer (fundcrosschecker/score.py)  ->  results/kid_scores.csv
 ```
 
 pdfplumber was chosen over PyMuPDF after a comparison on the trust KIDs (`spikes/compare_pdf_libs.py`). It read the cost tables as separate cells and kept F09's risk sentence in its place on the page, where PyMuPDF did neither, and it has an MIT licence. One limit: on two-column pages it merges the columns line by line, so a sentence that wraps inside one column comes out in pieces.
@@ -46,8 +46,8 @@ python3 -m venv .venv
 The PDFs aren't in the repo because they're copyrighted. Download each one from its link in `data/sources.csv`, save it in `pdfs/` under the name in the `local_file` column, and check it with `shasum -a 256 pdfs/<file>` against the `sha256` column. If the hash differs, it's a different version of the document (usually a newer one), and the answer key may not match it. Some sites only work in a browser.
 
 ```
-.venv/bin/python -m fundcrosscheck kid pdfs/      # extract every *_kid.pdf
-.venv/bin/python -m fundcrosscheck score          # compare with the answer key
+.venv/bin/python -m fundcrosschecker kid pdfs/      # extract every *_kid.pdf
+.venv/bin/python -m fundcrosschecker score          # compare with the answer key
 .venv/bin/python -m pytest                        # run the tests
 ```
 
@@ -64,13 +64,13 @@ Every answer key value was checked against its PDF's text by script, and every r
 ## Project layout
 
 ```
-fundcrosscheck/   the code: __main__.py (the commands), pdftext.py, kid.py, checks.py, score.py, output.py, common.py
-tests/            unit tests; the extractor's and checks' tests use real wording from the KIDs
-spikes/           the PDF library comparison
-data/             sources, answer key and their rules
-results/          score history (counts only), committed
-output/           extractor output, holds text from the PDFs, never committed
-pdfs/             the downloaded PDFs, never committed
+fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, checks.py, score.py, output.py, common.py
+tests/             unit tests; the extractor's and checks' tests use real wording from the KIDs
+spikes/            the PDF library comparison
+data/              sources, answer key and their rules
+results/           score history (counts only), committed
+output/            extractor output, holds text from the PDFs, never committed
+pdfs/              the downloaded PDFs, never committed
 ```
 
 ## What's next

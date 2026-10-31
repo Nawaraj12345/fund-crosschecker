@@ -4,8 +4,8 @@ from datetime import date
 
 import pytest
 
-from fundcrosscheck.checks import check_fields, format_problem, printed_dates, to_number
-from fundcrosscheck.common import NOT_FOUND, Field
+from fundcrosschecker.checks import check_fields, format_problem, printed_dates, to_number
+from fundcrosschecker.common import NOT_FOUND, Field
 
 TODAY = date(2026, 10, 31)
 

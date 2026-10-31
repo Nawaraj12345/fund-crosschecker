@@ -1,8 +1,8 @@
 """Command line: extract the figures from trust KIDs, and score them.
 
-    .venv/bin/python -m fundcrosscheck kid pdfs/F16_kid.pdf
-    .venv/bin/python -m fundcrosscheck kid pdfs/          (every *_kid.pdf in the folder)
-    .venv/bin/python -m fundcrosscheck score              (compare with the answer key)
+    .venv/bin/python -m fundcrosschecker kid pdfs/F16_kid.pdf
+    .venv/bin/python -m fundcrosschecker kid pdfs/          (every *_kid.pdf in the folder)
+    .venv/bin/python -m fundcrosschecker score              (compare with the answer key)
 
 `kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
 project folder, wherever the command is run from. The CSV holds only the KIDs
@@ -37,7 +37,7 @@ def kid_files(paths: list[Path]) -> tuple[list[Path], int]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="fundcrosscheck")
+    parser = argparse.ArgumentParser(prog="fundcrosschecker")
     sub = parser.add_subparsers(dest="command", required=True)
     kid_cmd = sub.add_parser("kid", help="extract figures from trust KIDs")
     kid_cmd.add_argument("paths", nargs="+", type=Path, help="KID PDFs, or folders of them")

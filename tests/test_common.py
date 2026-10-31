@@ -2,7 +2,7 @@
 
 import pytest
 
-from fundcrosscheck.common import isin_is_valid, normalise
+from fundcrosschecker.common import isin_is_valid, normalise
 
 
 @pytest.mark.parametrize("raw, expected", [

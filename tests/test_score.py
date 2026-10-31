@@ -6,8 +6,8 @@ import subprocess
 
 import pytest
 
-from fundcrosscheck.common import NOT_FOUND
-from fundcrosscheck.score import SCORED_FIELDS, classify, git_commit, is_stale, record, run, score
+from fundcrosschecker.common import NOT_FOUND
+from fundcrosschecker.score import SCORED_FIELDS, classify, git_commit, is_stale, record, run, score
 
 
 # --- matching rules ------------------------------------------------------------
@@ -136,8 +136,8 @@ def git(project, *args):
 
 @pytest.fixture
 def project(tmp_path):
-    (tmp_path / "fundcrosscheck").mkdir()
-    (tmp_path / "fundcrosscheck" / "kid.py").write_text("x = 1\n")
+    (tmp_path / "fundcrosschecker").mkdir()
+    (tmp_path / "fundcrosschecker" / "kid.py").write_text("x = 1\n")
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "answer_key.csv").write_text("fund_id\n")
     (tmp_path / "data" / "sources.csv").write_text("fund_id\n")
@@ -173,7 +173,7 @@ def test_committing_the_answer_key_moves_the_commit(project):
     assert git_commit(project) == head(project)
 
 
-@pytest.mark.parametrize("changed_file", ["fundcrosscheck/kid.py", "data/answer_key.csv"])
+@pytest.mark.parametrize("changed_file", ["fundcrosschecker/kid.py", "data/answer_key.csv"])
 def test_changed_code_or_answer_key_is_marked_uncommitted(project, changed_file):
     (project / changed_file).write_text("changed\n")
     assert git_commit(project).endswith("+uncommitted")
@@ -215,7 +215,7 @@ def scoring_files(folder):
 
 
 def test_uncommitted_code_is_scored_but_not_recorded(project, capsys):
-    (project / "fundcrosscheck" / "kid.py").write_text("x = 2\n")  # a change that isn't committed
+    (project / "fundcrosschecker" / "kid.py").write_text("x = 2\n")  # a change that isn't committed
     extracted, key, results = scoring_files(project)
     assert run(extracted, key, results, project) == 0
     assert "aren't committed" in capsys.readouterr().out

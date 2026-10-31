@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from fundcrosscheck import kid
-from fundcrosscheck.common import NOT_FOUND
+from fundcrosschecker import kid
+from fundcrosschecker.common import NOT_FOUND
 
 PROJECT = Path(__file__).resolve().parent.parent
 F16 = PROJECT / "pdfs" / "F16_kid.pdf"
@@ -23,7 +23,7 @@ def answer_key_row(fund_id):
 
 @pytest.mark.skipif(not F16.exists(), reason="pdfs/F16_kid.pdf isn't here (PDFs aren't in the repo)")
 def test_f16_matches_the_answer_key():
-    from fundcrosscheck.pdftext import read_pages
+    from fundcrosschecker.pdftext import read_pages
 
     fields, notes = kid.extract(read_pages(F16))
     key = answer_key_row("F16")
