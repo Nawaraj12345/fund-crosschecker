@@ -150,6 +150,20 @@ def test_the_request(tmp_path):
     assert "Ongoing charges 0.45%" in content
 
 
+@pytest.mark.parametrize("rule", [
+    "Record only what is printed.",
+    "never fill a gap from what the rules\nsay should be there",
+    # Each of these stopped a made-up value on the development factsheets:
+    "A\n  mention in descriptive or legal text",            # F16's share class (v2)
+    "An\n  expense ratio or charge",                         # F16's total cost (v3)
+    "is not this field.",
+    "never add a date or period from\n  elsewhere",         # F11's label (v2)
+])
+def test_the_prompt_keeps_its_rules_against_made_up_values(rule):
+    # Changing one of these should be a deliberate decision, so it has to change this test too.
+    assert rule in factsheet.SYSTEM_PROMPT
+
+
 def test_every_answer_key_field_is_asked_for():
     assert list(factsheet.FactsheetAnswers.model_fields) == factsheet.FIELDS
 
