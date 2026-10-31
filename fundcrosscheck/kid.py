@@ -1,16 +1,17 @@
 """Extract the figures from an investment trust's KID (Story 2.2).
 
-Thin slice: this fully handles F16 (F&C), a KID with no cost table. Still to
-come, in Story 2.2's order of work: the quote check and format checks; reading
-cost tables (ongoing, transaction and total cost); N/A rows, and noting charge
-figures given outside the table; the other name, date and risk wordings; and the
-two-ISIN rule. Until then those fields come out as not_found, with a note when
-a cost table wasn't read.
+Thin slice: this fully handles F16 (F&C), a KID with no cost table, and every
+value goes through the quote check and format checks (checks.py). Still to
+come, in Story 2.2's order of work: reading cost tables (ongoing, transaction
+and total cost); N/A rows, and noting charge figures given outside the table;
+the other name, date and risk wordings; and the two-ISIN rule. Until then those
+fields come out as not_found, with a note when a cost table wasn't read.
 """
 
 import re
 from datetime import date
 
+from .checks import check_fields
 from .common import NOT_FOUND, Field, isin_is_valid, normalise
 
 COST_FIELDS = ("ongoing_charge_pct", "charge_label", "transaction_cost_pct", "total_cost_pct")
@@ -36,6 +37,7 @@ def extract(pages: list[str]) -> tuple[dict[str, Field], list[str]]:
         "risk_method": _risk_method(pages),
         "doc_date": _doc_date(pages[0], notes),
     }
+    check_fields(fields, pages, notes)
     return fields, notes
 
 
