@@ -43,7 +43,8 @@ class FakeClient:
     def __init__(self, answers=None, stop_reason="end_turn"):
         self.requests = []
         parsed = factsheet.FactsheetAnswers.model_validate(answers) if answers else None
-        self._response = SimpleNamespace(stop_reason=stop_reason, parsed_output=parsed)
+        usage = SimpleNamespace(input_tokens=10_000, output_tokens=2_000)
+        self._response = SimpleNamespace(stop_reason=stop_reason, parsed_output=parsed, usage=usage)
         self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self._parse))
 
     def _parse(self, **request):
@@ -110,6 +111,13 @@ def test_an_answer_that_stopped_early_isnt_used(tmp_path, stop_reason):
     fields, notes = run(FakeClient(good_answers(), stop_reason), tmp_path)
     assert {f.value for f in fields.values()} == {NOT_FOUND}
     assert stop_reason in notes[0]
+
+
+def test_each_request_reports_its_cost(tmp_path, capsys):
+    run(FakeClient(good_answers()), tmp_path)
+    assert "10,000 input + 2,000 output tokens, about $0.080" in capsys.readouterr().err
+    run(FakeClient(good_answers()), tmp_path)  # cached: no request, so no cost line
+    assert "Asked Claude" not in capsys.readouterr().err
 
 
 def test_answers_are_cached(tmp_path):

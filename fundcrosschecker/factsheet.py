@@ -15,6 +15,7 @@ or the model asks again.
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -23,6 +24,7 @@ from .checks import check_fields
 from .common import NOT_FOUND, Field
 
 MODEL = "claude-opus-5-5"
+PRICE_PER_MILLION = {"input": 4.00, "output": 20.00}  # US$, this model's list price; for the cost line only
 EFFORT = "high"  # reading a messy layout carefully matters more than speed here
 FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",
           "transaction_cost_pct", "total_cost_pct", "risk_score", "risk_method", "doc_date"]
@@ -35,30 +37,45 @@ You get the text of each page, inside <page number="N"> tags. For each field, gi
 - value: the value, written as below, or "not_found" if the factsheet doesn't print it.
 - page: the page number it is on.
 - quote: a short piece of text copied exactly from that page (a line or part of a line)
-  that contains the value as printed. Copy it character for character; don't fix spacing,
-  spelling or symbols. For not_found, page and quote may be null.
+  that contains the whole value as printed (for a label, all of its words). Pick a place
+  where the value is printed in one piece, e.g. the title for the fund name. Copy it
+  character for character; don't fix spacing, spelling or symbols. For not_found, page and
+  quote may be null.
 
 Record only what is printed. Never work a value out, never fill a gap from what the rules
 say should be there, and never use outside knowledge of the fund.
 
 Fields:
-- fund_name: the fund's name exactly as printed at the top (not the share class, unless
-  the name and class are printed as one).
+- fund_name: the fund's name exactly as printed at the top, without the share class (even
+  when the class is printed on the same line, e.g. "... Fund P Accumulation Shares" or
+  "... PLC Income"), and without a ticker or abbreviation in brackets, e.g. "(HFEL)".
 - isin: the 12-character ISIN of the share class the factsheet is about.
-- share_class: the share class as printed, e.g. "A Accumulation". not_found if none is named.
+- share_class: the share class the factsheet is about, as named in its title, key facts or
+  fund details, in its fullest form there, e.g. "Income Shares" rather than "Income". A
+  mention in descriptive or legal text (e.g. "its Ordinary Shares are traded on ...") doesn't
+  count. not_found if no share class is named in those places.
 - ongoing_charge_pct: the ongoing charge as a number without the % sign, digits as printed
   ("0.20%" -> "0.20"). It may be called Ongoing charge, OCF, Ongoing Charges Ratio or similar.
   A management fee on its own is not an ongoing charge.
-- charge_label: the label printed next to that figure, e.g. "Ongoing Charges Figure (OCF)".
+- charge_label: the label exactly as printed next to that figure, e.g. "Ongoing Charges
+  Figure (OCF)". Include words in brackets only if they are printed as part of the label
+  itself, e.g. "Ongoing charges (year end 31 Aug 2025)"; never add a date or period from
+  elsewhere. Leave out footnote marks such as a trailing number or "*".
   not_found if ongoing_charge_pct is not_found.
 - transaction_cost_pct: portfolio transaction costs in percent, only if printed as such.
-- total_cost_pct: a total yearly cost in percent (e.g. "Annual cost impact"), only if printed.
+- total_cost_pct: a total yearly cost figure of the kind a KID prints, labelled e.g. "Annual
+  cost impact", "Total costs" or "Impact on return (RIY) per year", only if printed. An
+  expense ratio or charge (e.g. "Total expenses", "Total expense ratio", an ongoing charge or
+  a management fee) is not this field.
 - risk_score: the risk indicator's number from 1 to 7, only if the number is printed as text
   (a shaded box in a graphic doesn't count).
 - risk_method: "SRRI" or "SRI" if the factsheet names that indicator (in full or as the
   abbreviation), "other" for any other named 1-7 scale, otherwise not_found.
-- doc_date: the main "as at" date at the top of the factsheet, as YYYY-MM-DD (YYYY-MM if only
-  the month is given). Other dates, such as performance dates further down, don't count.
+- doc_date: the date the factsheet is "as at", as YYYY-MM-DD: the full date at the top if
+  there is one. If the top gives only a month (e.g. "September 2026"), use the full "as at"
+  date the factsheet gives for its figures in that month (e.g. "NAV as at 30 September
+  2026"), quoting where it's printed; YYYY-MM only if no day is printed for that month.
+  Other dates, such as charge periods or performance periods, don't count.
 """
 
 
@@ -139,6 +156,10 @@ def _ask_claude(pages: list[str], client, notes: list[str]) -> dict | None:
         messages=[{"role": "user", "content": prompt_text(pages)}],
         output_format=FactsheetAnswers,
     )
+    usage = response.usage
+    cost = (usage.input_tokens * PRICE_PER_MILLION["input"] + usage.output_tokens * PRICE_PER_MILLION["output"]) / 1e6
+    print(f"Asked Claude: {usage.input_tokens:,} input + {usage.output_tokens:,} output tokens, about ${cost:.3f}",
+          file=sys.stderr)
     if response.stop_reason != "end_turn" or response.parsed_output is None:
         notes.append(f"Claude gave no usable answer (stop reason: {response.stop_reason}), so every field is not_found.")
         return None
