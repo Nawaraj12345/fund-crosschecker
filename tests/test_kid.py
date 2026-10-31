@@ -223,3 +223,71 @@ def test_n_a_wins_over_a_charge_in_the_rows_own_text():
                       "Performance fees N/A\nHow long should I hold it")
     assert fields["ongoing_charge_pct"].value == NOT_FOUND
     assert fields["charge_label"].value == NOT_FOUND
+
+
+# --- charges given outside the cost row (Story 2.2, notes) --------------------------
+
+from fundcrosschecker.common import Field  # noqa: E402
+
+
+def elsewhere(pages, ongoing=Field(NOT_FOUND)):
+    return kid._charges_elsewhere(pages, ongoing)
+
+
+def test_f06_quote_starts_at_the_nearest_charge_word():
+    page = ("The Ongoing Charges Ratio (OCR) represents the total operating expenses of the Company. The OCR shows the annual "
+            "percentage reduction in the net asset value as a result of the costs of running the Company. "
+            "The OCR for the year to 30 April 2025 was 0.77%. Other ongoing costs 0.00% The costs that we take")
+    notes = elsewhere(["", "", page], Field("0.00", 3, "Other ongoing costs 0.00%"))
+    assert notes == ['Charge given outside the cost row: 0.77% on page 3 ("OCR for the year to 30 April 2025 was 0.77%").']
+
+
+@pytest.mark.parametrize("text, figure", [
+    ("The most recent figure for 2025 was 0.73% with further information", "0.73"),                               # F10
+    ("3BThe most recent published ongoing charges figure for the year ended 30 April 2026 was 0.67%.", "0.67"),    # F11
+    ("For the year ending 31 May 2025, the annualised OCF was 1.35%. For the avoidance of doubt", "1.35"),         # F13
+])
+def test_charges_stated_in_a_sentence_are_noted(text, figure):
+    notes = elsewhere(["", text])
+    assert len(notes) == 1 and f"{figure}% on page 2" in notes[0]
+
+
+def test_f14_both_operating_expense_ratios_are_noted():
+    page = ("Ongoing Operating Expenses (exc. indirect fund management fees) Operating Expense Ratio (exc. indirect fund 1.03% "
+            "management fees) Operating Expense Ratio (inc. indirect fund 1.10%")
+    notes = elsewhere(["", "", "", page])
+    assert [n.split(":")[1].split(" on")[0].strip() for n in notes] == ["1.03%", "1.10%"]
+
+
+def test_f19_same_figure_on_two_pages_gives_one_note():
+    notes = elsewhere(["", "For reference, the most recent OCR was 0.74%.", "the most recent OCR was 0.74%. As noted above"])
+    assert notes == ['Charge given outside the cost row: 0.74% on page 2 ("OCR was 0.74%").']
+
+
+@pytest.mark.parametrize("page, ongoing", [
+    # F04: the description sentence is where the charge came from, so it isn't "elsewhere"
+    ("incurred by the Company. The OCF for the year to 31 August 2025 was 1.52%.",
+     Field("1.52", 1, "The OCF for the year to 31 August 2025 was 1.52%")),
+    # F16: the stated charge is the one used
+    ("Company Factsheet as an Ongoing Charge. The latest published Ongoing Charge for the Company was 0.45%.",
+     Field("0.45", 1, "latest published Ongoing Charge for the Company was 0.45%")),
+    # the used figure repeated in another sentence adds nothing
+    ("Other ongoing costs 0.70% The impact. The OCF was 0.70% last year.", Field("0.70", 1, "Other ongoing costs 0.70%")),
+])
+def test_the_charge_already_used_is_not_noted_again(page, ongoing):
+    assert elsewhere([page], ongoing) == []
+
+
+@pytest.mark.parametrize("fund_id, figures", [
+    ("F06", ["0.77%"]), ("F10", ["0.73%"]), ("F11", ["0.67%"]),
+    ("F13", ["1.35%"]), ("F14", ["1.03%", "1.10%"]), ("F19", ["0.74%"]),
+])
+def test_real_kids_note_the_charge_given_outside_the_cost_row(fund_id, figures):
+    pdf = PROJECT / "pdfs" / f"{fund_id}_kid.pdf"
+    if not pdf.exists():
+        pytest.skip(f"pdfs/{fund_id}_kid.pdf isn't here (PDFs aren't in the repo)")
+    from fundcrosschecker.pdftext import read_pages
+
+    _, notes = kid.extract(read_pages(pdf))
+    noted = [note.split(": ")[1].split(" on page")[0] for note in notes if "outside the cost row" in note]
+    assert noted == figures

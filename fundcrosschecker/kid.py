@@ -1,10 +1,10 @@
 """Extract the figures from an investment trust's KID (Story 2.2).
 
 It reads KIDs with and without a cost table, and every value goes through the
-quote check and format checks (checks.py). Still to come, in Story 2.2's order
-of work: noting charge figures given outside the cost row; the other name, date
-and risk wordings; and the two-ISIN rule. Until then those fields come out as
-not_found.
+quote check and format checks (checks.py), and the notes record any charge the
+KID gives outside its cost row. Still to come, in Story 2.2's order of work: the
+other name, date and risk wordings, and the two-ISIN rule. Until then those
+fields come out as not_found.
 """
 
 import re
@@ -37,6 +37,7 @@ def extract(pages: list[str]) -> tuple[dict[str, Field], list[str]]:
         "doc_date": _doc_date(pages[0], notes),
     }
     check_fields(fields, pages, notes)
+    notes.extend(_charges_elsewhere(pages, fields["ongoing_charge_pct"]))
     return fields, notes
 
 
@@ -287,6 +288,37 @@ def _total_cost(section: list[tuple[int, str]]) -> Field:
                 return Field(last[:-1], page_no, match.group(0))
             return Field(NOT_FOUND, page_no, match.group(0))
     return Field(NOT_FOUND)
+
+
+# A charge stated in words: "The OCR for the year to 30 April 2025 was 0.77%" (F06), "the most
+# recent figure for 2025 was 0.73%" (F10), "Operating Expense Ratio (exc. indirect fund costs) 1.03%" (F14).
+CHARGE_WORDS = (r"(?:OCF|OCR|[Oo]ngoing [Cc]harges?(?: [Ff]igure| [Rr]atio)?|most recent figure"
+                r"|Operating Expense Ratio)")
+# From the nearest charge word to the figure: the match can't run over another charge word.
+STATED_CHARGE = rf"{CHARGE_WORDS}(?:(?!{CHARGE_WORDS})[^%]){{0,160}}?(?<![\d.])(\d+(?:\.\d+)?)%"
+
+
+def _charges_elsewhere(pages: list[str], ongoing: Field) -> list[str]:
+    """Story 2.2's notes: charge figures the KID gives outside the row used for
+    the ongoing charge, with their page, for Sprint 3 to explain differences.
+    The sentence the ongoing charge came from, and repeats of a figure already
+    noted or used, are left out."""
+    used_page, used_span = None, None
+    if ongoing.value != NOT_FOUND and ongoing.page and ongoing.quote:
+        text = normalise(pages[ongoing.page - 1])
+        start = text.find(normalise(ongoing.quote))
+        if start >= 0:
+            used_page, used_span = ongoing.page, (start, start + len(normalise(ongoing.quote)))
+    seen = {ongoing.value}
+    notes = []
+    for page_no, raw in enumerate(pages, start=1):
+        for match in re.finditer(STATED_CHARGE, normalise(raw)):
+            overlaps_used = (page_no == used_page and match.start() < used_span[1] and used_span[0] < match.end())
+            if overlaps_used or match.group(1) in seen:
+                continue
+            seen.add(match.group(1))
+            notes.append(f'Charge given outside the cost row: {match.group(1)}% on page {page_no} ("{match.group(0)}").')
+    return notes
 
 
 def _risk_score(pages: list[str]) -> Field:

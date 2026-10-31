@@ -16,7 +16,7 @@ The project is in Sprint 2. So far it reads trust KIDs:
 
 - **Extracts 10 fields** from each KID: fund name, ISIN, share class, ongoing charge and its label, transaction cost, total cost, risk score, risk method and document date. Each value it finds comes with the page and the exact text it was read from.
 - **Checks every value before saving it.** It checks the format (ISIN check digit, percentages from 0 to 5, risk score 1 to 7, a real date) and that the quoted text really is on that page and contains the value. A value that fails either check becomes `not_found`, with the reason in the notes, so the tool never reports a number it can't point to in the document.
-- **Reads cost tables**, including the awkward layouts: rows where the description column is mixed in, labels split over two lines, figures given as N/A or only as a £ amount.
+- **Reads cost tables**, including the awkward layouts: rows where the description column is mixed in, labels split over two lines, figures given as N/A or only as a £ amount. When the KID states a charge somewhere else, such as in its text, the notes record it with its page.
 - **Scores itself** against an answer key built from the PDFs (see [The data](#the-data)). On the 14 trust KIDs: **126 of 140 values correct, 0 wrong, 0 made up**. The other 14 are `not_found` so far: 9 dates written in other ways, and the names (plus two share classes) of the 3 KIDs without a "Product" heading.
 
 Not built yet: factsheets, the factsheet-versus-KID comparison itself, and a web page.
@@ -77,6 +77,6 @@ pdfs/              the downloaded PDFs, never committed
 
 | When | What |
 |---|---|
-| Sprint 2 (to 29 Nov 2026) | Finish the trust KIDs: notes for charges given only in the text, other date and name wordings. Then factsheets |
+| Sprint 2 (to 29 Nov 2026) | Finish the trust KIDs: other date and name wordings. Then factsheets |
 | Sprint 3 (30 Nov – 13 Dec 2026) | The ordinary funds' KIIDs (the controls), then the comparison: match, mismatch, or can't compare, with the likely reason |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |
