@@ -70,9 +70,9 @@ def format_problem(name: str, value: str, today: date) -> str | None:
 def quote_problem(name: str, field: Field, page_texts: list[str]) -> str | None:
     """Story 2.2's quote check: the quote must be on its page and contain the value.
 
-    `page_texts` must already be normalised. Two exceptions, because their
-    value is written differently from the print: a date is looked for as
-    printed, and a risk method by the indicator's name.
+    `page_texts` must already be normalised. Three exceptions: a date is looked
+    for as printed, a risk method by the indicator's name, and a charge label's
+    words only have to appear in order (labels can wrap onto a second line).
     """
     if not field.page or not field.quote:
         return "no page or quote"
@@ -97,6 +97,11 @@ def value_in_quote(name: str, value: str, quote: str) -> bool:
     if name in NUMBER_FIELDS:
         # The number on its own: "0.8" is in "0.8%", but not in "10.8%" or "0.85%".
         return re.search(rf"(?<![\d.]){re.escape(value)}(?!\d)", quote) is not None
+    if name == "charge_label":
+        # A label can wrap onto the next line of its table cell ("Other ongoing", then
+        # "costs" on F09), so its words only have to appear in the quote in order.
+        words = [re.escape(word) for word in normalise(value).casefold().split()]
+        return re.search(r"\b" + r"\b.*?\b".join(words) + r"\b", quote.casefold()) is not None
     return normalise(value) in quote
 
 

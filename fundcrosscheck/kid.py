@@ -1,11 +1,10 @@
 """Extract the figures from an investment trust's KID (Story 2.2).
 
-Thin slice: this fully handles F16 (F&C), a KID with no cost table, and every
-value goes through the quote check and format checks (checks.py). Still to
-come, in Story 2.2's order of work: reading cost tables (ongoing, transaction
-and total cost); N/A rows, and noting charge figures given outside the table;
-the other name, date and risk wordings; and the two-ISIN rule. Until then those
-fields come out as not_found, with a note when a cost table wasn't read.
+It reads KIDs with and without a cost table, and every value goes through the
+quote check and format checks (checks.py). Still to come, in Story 2.2's order
+of work: noting charge figures given outside the cost row; the other name, date
+and risk wordings; and the two-ISIN rule. Until then those fields come out as
+not_found.
 """
 
 import re
@@ -135,16 +134,14 @@ def _cost_section(pages: list[str]) -> list[tuple[int, str]]:
 
 
 def _costs(pages: list[str], notes: list[str]) -> dict[str, Field]:
-    """Story 2.2's ongoing charge steps 1-2. For now only the no-cost-table case is read."""
+    """Story 2.2's ongoing charge steps 1-2: find the cost section and see whether it has a cost table."""
     missing = {name: Field(NOT_FOUND) for name in COST_FIELDS}
     section = _cost_section(pages)
     if not section:
         notes.append("No cost section found.")
         return missing
     if any("Composition of costs" in text for _, text in section):
-        notes.append("Cost table not read yet (Story 2.2, step 4): ongoing, transaction "
-                     "and total cost left as not_found.")
-        return missing
+        return _cost_table(section, pages, notes)
 
     # No cost table: transaction and total cost are not_found, and the ongoing
     # charge is the one stated in the cost section.
@@ -159,6 +156,137 @@ def _costs(pages: list[str], notes: list[str]) -> dict[str, Field]:
             }
     notes.append("No cost table, and no stated ongoing charge found.")
     return missing
+
+
+# --- reading a cost table (Story 2.2, step 4) -------------------------------------
+
+# A figure in a cost table: a percentage, N/A, or a £ amount.
+FIGURE = r"(?<![\w.])(?:\d+(?:\.\d+)?%|N/A|n/a|£\s?[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)? GBP)"
+# The rows of the "Composition of costs" table, in capitals as printed, so the
+# same words inside a description ("No portfolio transaction costs ...") don't count.
+ROW_LABELS = {
+    "entry": r"Entry costs",
+    "exit": r"Exit costs",
+    "transaction": r"Portfolio(?: transaction)?(?: costs)?|Transaction costs",
+    "ongoing": r"Other on-?going(?: costs)?|Management fees and other(?: administrative or operating costs)?",
+    "performance": r"Performance fees?",
+    "carried": r"Carried interests?",
+}
+ANY_ROW = "|".join(f"(?:{pattern})" for pattern in ROW_LABELS.values())
+# The yearly total in the "Costs over time" table, followed by one figure per holding period.
+TOTAL_ROW = r"(?i:Annual cost impact(?: \(\*\))?|Impact on return \(RIY\) per year(?: \(%\))?)"
+# A charge given in the ongoing row's own description: "The OCF for the year to 31 August 2025 was 1.52%".
+DESCRIBED_CHARGE = r"The (OCF|OCR)\b[^%]{0,80}? was (\d+(?:\.\d+)?)%"
+
+
+def _cost_table(section: list[tuple[int, str]], pages: list[str], notes: list[str]) -> dict[str, Field]:
+    """Story 2.2's ongoing charge steps 3-5, plus transaction and total cost, from a cost table.
+
+    A percentage is used as printed. N/A becomes not_found (keeping the row as
+    its quote). A £ amount alone becomes not_found with a note, except that a
+    percentage in the ongoing row's own description counts (F04).
+    """
+    fields = {name: Field(NOT_FOUND) for name in COST_FIELDS}
+    fields["total_cost_pct"] = _total_cost(section)
+    table = _composition(section)
+
+    row = _row(table, "transaction")
+    if row:
+        page_no, label, figure, quote, _ = row
+        fields["transaction_cost_pct"] = _figure_field(figure, page_no, quote, label, notes)
+
+    row = _row(table, "ongoing")
+    if row:
+        page_no, label, figure, quote, span = row
+        described = re.search(DESCRIBED_CHARGE, span) if _is_money(figure) else None
+        if described:
+            fields["ongoing_charge_pct"] = Field(described.group(2), page_no, described.group(0))
+            fields["charge_label"] = Field(described.group(1), page_no, described.group(0))
+        else:
+            fields["ongoing_charge_pct"] = _figure_field(figure, page_no, quote, label, notes)
+            if fields["ongoing_charge_pct"].value != NOT_FOUND:
+                fields["charge_label"] = _full_label(label, pages[page_no - 1], page_no, notes)
+    return fields
+
+
+def _composition(section: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """The cost section from "Composition of costs" onwards."""
+    for i, (page_no, text) in enumerate(section):
+        start = text.find("Composition of costs")
+        if start >= 0:
+            return [(page_no, text[start:])] + section[i + 1:]
+    return []
+
+
+def _row(table: list[tuple[int, str]], kind: str) -> tuple[int, str, str, str, str] | None:
+    """Find a row of the composition table: (page, label, figure, quote, row text).
+
+    First a clean row, where the figure comes straight after the label
+    ("Other ongoing costs 0.70%"). If there isn't one, the description column
+    has been mixed into the row (F04, F12), so take the first figure before the
+    next row's label. The quote runs from the label to the figure.
+    """
+    label = ROW_LABELS[kind]
+    for page_no, text in table:
+        match = re.search(rf"({label})\s+({FIGURE})", text)
+        if match:
+            return page_no, match.group(1), match.group(2), match.group(0), _row_text(text, match.start())
+    for page_no, text in table:
+        for match in re.finditer(label, text):
+            span = _row_text(text, match.start())
+            figure = re.search(FIGURE, span[match.end() - match.start():])
+            if figure:
+                end = match.end() - match.start() + figure.end()
+                return page_no, match.group(0), figure.group(0), span[:end], span
+    return None
+
+
+def _row_text(text: str, start: int) -> str:
+    """From a row's label up to the next row's label."""
+    label = re.match(ANY_ROW, text[start:])
+    after = start + (label.end() if label else 0)
+    following = re.search(ANY_ROW, text[after:])
+    return text[start:after + following.start()] if following else text[start:]
+
+
+def _figure_field(figure: str, page_no: int, quote: str, label: str, notes: list[str]) -> Field:
+    if figure.endswith("%"):
+        return Field(figure[:-1], page_no, quote)
+    if _is_money(figure):
+        notes.append(f"{label}: only a £ amount is given ({figure}), so no percentage.")
+        return Field(NOT_FOUND)
+    return Field(NOT_FOUND, page_no, quote)  # N/A
+
+
+def _is_money(figure: str) -> bool:
+    return figure.startswith("£") or figure.endswith("GBP")
+
+
+def _full_label(label: str, page: str, page_no: int, notes: list[str]) -> Field:
+    """The row label as printed. If it wraps onto the next line ("Other ongoing" then
+    "costs" on F09), it's completed only when that line really starts with the rest."""
+    if label.endswith("costs"):
+        return Field(label, page_no, label)
+    lines = [normalise(line) for line in page.splitlines()]
+    for i, line in enumerate(lines[:-1]):
+        if label in line and lines[i + 1].startswith("costs"):
+            quote = line[line.index(label):] + " costs"
+            return Field(f"{label} costs", page_no, quote)
+    notes.append(f"Couldn't read the whole row label starting {label!r}.")
+    return Field(NOT_FOUND)
+
+
+def _total_cost(section: list[tuple[int, str]]) -> Field:
+    """The yearly total cost, from the column for the recommended holding period:
+    usually the last one ("Impact on return (RIY) per year 1.0% 1.0% 1.0%")."""
+    for page_no, text in section:
+        match = re.search(rf"{TOTAL_ROW}((?:\s+(?:\d+(?:\.\d+)?%|N/A|n/a))+)", text)
+        if match:
+            last = match.group(1).split()[-1]
+            if last.endswith("%"):
+                return Field(last[:-1], page_no, match.group(0))
+            return Field(NOT_FOUND, page_no, match.group(0))
+    return Field(NOT_FOUND)
 
 
 def _risk_score(pages: list[str]) -> Field:

@@ -7,9 +7,10 @@ Every scored value is one of:
   made up   the answer key says not_found, the tool gives a value. The worst
             kind: it's how a wrong cost gets passed on to a client.
 
-A full run (every KID in the answer key, extracted by the current code) adds
-one row per field to results/kid_scores.csv, unless it's the same as the last
-recorded run. That file holds counts only, never text from the PDFs, so it's
+A full run (every KID in the answer key, extracted by the current code, with
+the code and the answer key committed) adds one row per field to
+results/kid_scores.csv, unless it's the same as the last recorded run. So every
+row can be reproduced from the commit it names. That file holds counts only, never text from the PDFs, so it's
 committed and keeps a history of the score.
 """
 
@@ -177,7 +178,8 @@ def read_csv(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
-def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_path: Path = RESULTS) -> int:
+def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_path: Path = RESULTS,
+        project: Path = PROJECT) -> int:
     """The `score` command."""
     if not extracted_path.exists():
         print(f"No {extracted_path}: run the extractor first (python -m fundcrosscheck kid pdfs/).")
@@ -197,13 +199,16 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
         print(problem)
     print_report(results)
 
-    # Only a full run of the current code goes into the history, so the rows stay comparable.
+    # Only a full run of the current, committed code goes into the history, so the rows stay comparable.
+    commit = git_commit(project)
     if not_extracted:
         print(f"\nNot recorded: {len(not_extracted)} KID(s) weren't extracted ({', '.join(not_extracted)}). "
               "Run the extractor on pdfs/ to score them all.")
-    elif is_stale(extracted_path, PROJECT / "fundcrosscheck"):
+    elif is_stale(extracted_path, project / "fundcrosscheck"):
         print("\nNot recorded: the code changed after the extractor last ran. Run it again first.")
-    elif record(results, results_path, date.today().isoformat(), git_commit(PROJECT)):
+    elif commit.endswith("+uncommitted"):
+        print("\nNot recorded: the code or the answer key has changes that aren't committed. Commit them, then score again.")
+    elif record(results, results_path, date.today().isoformat(), commit):
         print(f"\nRecorded in {results_path}")
     else:
         print("\nNot recorded again: same commit and same counts as the last recorded run.")

@@ -134,6 +134,21 @@ def test_risk_method_needs_the_indicators_name(quote, ok):
     assert (fields["risk_method"].value == "SRI") == ok
 
 
+@pytest.mark.parametrize("value, quote, ok", [
+    ("Other ongoing costs", "Other ongoing 0.8% The impact of the costs that are incurred each year for managing your costs", True),  # F09 wraps
+    ("Other ongoing costs", "Other ongoing costs 0.00%", True),
+    ("OCF", "The OCF for the year to 31 August 2025 was 1.52%.", True),                                 # F04
+    ("Other ongoing costs", "costs Other ongoing 0.8%", False),     # words out of order
+    ("Ongoing Charge", "The latest published OCR was 0.74%", False),  # words not there
+    ("OCF", "The OCFs for the year", False),                        # whole words only
+])
+def test_charge_label_words_must_appear_in_order(value, quote, ok):
+    # The label needs a charge beside it, or the "label goes with its charge" rule removes it.
+    fields = {"ongoing_charge_pct": Field("1", 1, "1%"), "charge_label": Field(value, 1, quote)}
+    run(fields, [quote + " 1%"])
+    assert (fields["charge_label"].value == value) == ok
+
+
 # --- the format checks -------------------------------------------------------
 
 @pytest.mark.parametrize("name, value, problem", [

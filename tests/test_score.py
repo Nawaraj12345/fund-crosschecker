@@ -203,3 +203,29 @@ def test_missing_files_and_columns_are_reported(tmp_path, capsys):
     assert run(extracted, key, results) == 1
     assert "The extractor output is missing columns: charge_label, doc_date" in capsys.readouterr().out
     assert not results.exists()
+
+
+def scoring_files(folder):
+    """An answer key and extractor output for one KID, written after the code, so not stale."""
+    header = "fund_id,doc_type," + ",".join(SCORED_FIELDS)
+    row = "F16,kid," + ",".join(["not_found"] * len(SCORED_FIELDS))
+    (folder / "key.csv").write_text(f"{header}\n{row}\n")
+    (folder / "out.csv").write_text(f"{header}\n{row}\n")
+    return folder / "out.csv", folder / "key.csv", folder / "scores.csv"
+
+
+def test_uncommitted_code_is_scored_but_not_recorded(project, capsys):
+    (project / "fundcrosscheck" / "kid.py").write_text("x = 2\n")  # a change that isn't committed
+    extracted, key, results = scoring_files(project)
+    assert run(extracted, key, results, project) == 0
+    assert "aren't committed" in capsys.readouterr().out
+    assert not results.exists()
+
+
+def test_committed_code_is_recorded(project, capsys):
+    extracted, key, results = scoring_files(project)
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "scoring files")
+    assert run(extracted, key, results, project) == 0
+    assert "Recorded in" in capsys.readouterr().out
+    assert read_rows(results)[1][1] == git_commit(project)
