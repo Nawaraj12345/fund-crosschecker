@@ -40,3 +40,7 @@ One row per document. Values are read from the PDF and checked against its text 
 Record only what the document prints. Don't fill a gap with what the rules say should be there.
 
 An empty cell means not checked yet. `not_found` means checked, and the document doesn't show it.
+
+## unseen/
+
+The trusts for the unseen-trusts test: ten trusts that were never looked at while the rules were written. `unseen/sources.csv` and `unseen/answer_key.csv` have the same columns as the files above, and their PDFs go in `pdfs/unseen/`. They're kept apart so their score is never mixed with the development score. The answer key was written from the PDFs and committed before the tool was run on them, so the commit history shows it wasn't fitted to the tool's output.
