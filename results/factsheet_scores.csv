@@ -29,3 +29,13 @@ run_date,git_commit,field,correct,wrong,missed,made_up
 2026-10-31,972d511,risk_score,15,0,4,0
 2026-10-31,972d511,risk_method,18,0,1,0
 2026-10-31,972d511,doc_date,16,0,3,0
+2026-10-31,63a084d,fund_name,19,0,0,0
+2026-10-31,63a084d,isin,19,0,0,0
+2026-10-31,63a084d,share_class,17,2,0,0
+2026-10-31,63a084d,ongoing_charge_pct,18,0,1,0
+2026-10-31,63a084d,charge_label,13,0,6,0
+2026-10-31,63a084d,transaction_cost_pct,19,0,0,0
+2026-10-31,63a084d,total_cost_pct,19,0,0,0
+2026-10-31,63a084d,risk_score,15,0,4,0
+2026-10-31,63a084d,risk_method,18,0,1,0
+2026-10-31,63a084d,doc_date,16,0,3,0
