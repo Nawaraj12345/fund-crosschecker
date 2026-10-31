@@ -194,8 +194,10 @@ def one_line(text):
 @pytest.mark.parametrize("rule", [
     "Record only what is printed.",
     "never fill a gap from what the rules say should be there",
-    # Added in prompt v3, after v2 made up F16's share class from a legal sentence:
-    "A mention in descriptive or legal text",
+    # Added in prompt v3, after v2 made up F16's share class from a legal sentence; narrowed in v5
+    # to one-class funds, following the share class rule in data/README.md:
+    "One class: only if the title, key facts or fund details name it as the factsheet's own class.",
+    "A mention elsewhere, such as \"its Ordinary Shares are traded on ...\", doesn't count.",
     # Added in prompt v4, after v3 made up F16's total cost from "Total expenses" (two lines of one rule):
     "An expense ratio or charge",
     "is not this field.",

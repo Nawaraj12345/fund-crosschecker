@@ -50,10 +50,14 @@ Fields:
   when the class is printed on the same line, e.g. "... Fund P Accumulation Shares" or
   "... PLC Income"), and without a ticker or abbreviation in brackets, e.g. "(HFEL)".
 - isin: the 12-character ISIN of the share class the factsheet is about.
-- share_class: the share class the factsheet is about, as named in its title, key facts or
-  fund details, in its fullest form there, e.g. "Income Shares" rather than "Income". A
-  mention in descriptive or legal text (e.g. "its Ordinary Shares are traded on ...") doesn't
-  count. not_found if no share class is named in those places.
+- share_class: the share class the factsheet is about. What counts depends on how many classes
+  the fund or trust has, as the factsheet shows it:
+  - More than one class (it mentions other classes, or names its class to tell it apart, e.g.
+    "Income" and "Growth"): the official class name in its fullest printed form, wherever the
+    factsheet prints it, e.g. "Income Shares" rather than the title's "Income".
+  - One class: only if the title, key facts or fund details name it as the factsheet's own
+    class. A mention elsewhere, such as "its Ordinary Shares are traded on ...", doesn't count.
+  not_found if no class is named that way.
 - ongoing_charge_pct: the ongoing charge as a number without the % sign, digits as printed
   ("0.20%" -> "0.20"). It may be called Ongoing charge, OCF, Ongoing Charges Ratio or similar.
   A management fee on its own is not an ongoing charge.
