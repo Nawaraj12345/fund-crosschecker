@@ -79,6 +79,6 @@ pdfs/              the downloaded PDFs, never committed
 
 | When | What |
 |---|---|
-| Sprint 2 (to 29 Nov 2026) | Finish the trust KIDs: other date and name wordings. Then factsheets |
+| Sprint 2 (to 29 Nov 2026) | Finish the trust KIDs: other date and name wordings. Test on 10 trusts the tool hasn't seen. Then factsheets |
 | Sprint 3 (30 Nov – 13 Dec 2026) | The ordinary funds' KIIDs (the controls), then the comparison: match, mismatch, or can't compare, with the likely reason |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |
