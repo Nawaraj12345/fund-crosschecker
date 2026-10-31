@@ -40,3 +40,27 @@ def test_real_isins_pass(isin):
 ])
 def test_bad_isins_fail(isin):
     assert not isin_is_valid(isin)
+
+
+# --- edge and invalid inputs ------------------------------------------------------
+
+@pytest.mark.parametrize("raw, expected", [
+    ("", ""),                 # empty
+    ("   \n\t ", ""),         # only spaces
+    ("a b", "a b"),      # non-breaking space
+])
+def test_normalise_edges(raw, expected):
+    assert normalise(raw) == expected
+
+
+@pytest.mark.parametrize("isin", ["", " GB00BS88V647", "GB00BS88V647 ", "GB 00BS88V647", "1200BS88V647"])
+def test_isin_edges_fail(isin):
+    # Empty, spaces round or inside it, or a country code that isn't letters.
+    assert not isin_is_valid(isin)
+
+
+@pytest.mark.parametrize("function", [normalise, isin_is_valid])
+def test_none_is_an_error(function):
+    # Invalid: callers always pass text, so None is a bug to surface, not to hide.
+    with pytest.raises(TypeError):
+        function(None)

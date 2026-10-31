@@ -93,13 +93,26 @@ def score(extracted: list[dict], answer_key: list[dict],
     """Compare each extracted document with its answer key row of the same doc_type.
 
     Returns the results, the answer key documents that weren't extracted, and
-    problems (an extracted document that isn't in the answer key). An empty answer
-    key cell means "not checked yet", so it isn't scored.
+    problems (an extracted document that isn't in the answer key, or a document
+    that appears twice). An empty answer key cell means "not checked yet", so it
+    isn't scored. A document is scored once, even if it's extracted twice.
     """
-    key_rows = {row["fund_id"]: row for row in answer_key if row["doc_type"] == doc_type}
-    results, problems = [], []
+    key_rows: dict[str, dict] = {}
+    problems: list[str] = []
+    for row in answer_key:
+        if row["doc_type"] != doc_type:
+            continue
+        if row["fund_id"] in key_rows:
+            problems.append(f"{row['fund_id']} is in the answer key more than once; only its first row was used.")
+            continue
+        key_rows[row["fund_id"]] = row
+    results, scored = [], set()
     for row in extracted:
         fund_id = row["fund_id"]
+        if fund_id in scored:
+            problems.append(f"{fund_id} was extracted more than once; it was scored once.")
+            continue
+        scored.add(fund_id)
         if fund_id not in key_rows:
             problems.append(f"{fund_id} isn't in the answer key, so it wasn't scored.")
             continue
@@ -157,6 +170,8 @@ def record(results: list[Result], path: Path, run_date: str, commit: str) -> boo
     Returns False, writing nothing, if the last recorded run had the same
     commit and the same counts: running the scorer again adds no history.
     """
+    if not results:
+        return False  # nothing was scored, so there's nothing to add to the history
     by_field = counts_by(results, "field")
     rows = [[run_date, commit, field, str(c["correct"]), str(c["wrong"]), str(c["missed"]), str(c["made up"])]
             for field, c in ((f, by_field[f]) for f in SCORED_FIELDS if f in by_field)]
@@ -222,6 +237,10 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
     if not_extracted:
         print(f"\nNot recorded: {len(not_extracted)} {LABELS[doc_type]}(s) weren't extracted ({', '.join(not_extracted)}). "
               f"Run the extractor on {pdf_folder} to score them all.")
+    elif not results:
+        print("\nNot recorded: nothing was scored.")
+    elif any("in the answer key more than once" in problem for problem in problems):
+        print("\nNot recorded: the answer key has a document twice. Fix it, then score again.")
     elif is_stale(extracted_path, project / "fundcrosschecker"):
         print("\nNot recorded: the code changed after the extractor last ran. Run it again first.")
     elif commit.endswith("+uncommitted"):

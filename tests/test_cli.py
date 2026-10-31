@@ -53,3 +53,29 @@ def test_other_errors_give_no_key_hint(folder, capsys):
 def test_kid_messages_still_say_kid(folder, capsys):
     cli.extract_all([folder], "kid", lambda pages, sha: fields())
     assert "1 KID(s) written" in capsys.readouterr().out
+
+
+def test_the_same_file_twice_is_read_once(folder):
+    seen = []
+    cli.extract_all([folder, folder / "F01_factsheet.pdf"], "factsheet", lambda pages, sha: seen.append(sha) or fields())
+    assert len(seen) == 2  # F01 and F02, not F01 twice
+    assert (folder.parent / "output" / "factsheet_extracted.csv").read_text().count("F01,") == 1
+
+
+def test_an_empty_folder_reads_nothing(tmp_path, capsys):
+    (tmp_path / "empty").mkdir()
+    assert cli.extract_all([tmp_path / "empty"], "kid", lambda pages, sha: fields()) == 1
+    assert "No KID files to read" in capsys.readouterr().err
+
+
+def test_a_missing_path_is_reported(folder, capsys):
+    assert cli.extract_all([folder.parent / "nope", folder], "factsheet", lambda pages, sha: fields()) == 1
+    err = capsys.readouterr().err
+    assert "Couldn't find" in err and "1 file(s) skipped or failed" in err
+
+
+def test_a_file_with_the_wrong_name_is_skipped(folder, capsys):
+    odd = folder / "F17_KID.PDF"
+    odd.write_bytes(b"%PDF")
+    assert cli.extract_all([odd], "kid", lambda pages, sha: fields()) == 1
+    assert "name isn't like F16_kid.pdf" in capsys.readouterr().err

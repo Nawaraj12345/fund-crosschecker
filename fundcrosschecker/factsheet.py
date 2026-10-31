@@ -135,7 +135,12 @@ def cache_key(pdf_sha256: str) -> str:
 def _cached_or_asked(pages, pdf_sha256, client, cache_dir: Path, notes: list[str]) -> dict | None:
     path = cache_dir / f"{cache_key(pdf_sha256)}.json"
     if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+        # Checked against the answer format, so a damaged file stops with a clear message instead of a
+        # confusing error later. It isn't replaced automatically, because asking Claude again costs money.
+        try:
+            return FactsheetAnswers.model_validate_json(path.read_text(encoding="utf-8")).model_dump()
+        except ValueError as error:  # pydantic's ValidationError, for bad JSON or missing fields
+            raise ValueError(f"the cached answer {path} is damaged or incomplete; delete it to ask Claude again") from error
     answers = _ask_claude(pages, client, notes)
     if answers is not None:  # a failed answer isn't cached, so the next run asks again
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,10 +161,13 @@ def _ask_claude(pages: list[str], client, notes: list[str]) -> dict | None:
         messages=[{"role": "user", "content": prompt_text(pages)}],
         output_format=FactsheetAnswers,
     )
-    usage = response.usage
-    cost = (usage.input_tokens * PRICE_PER_MILLION["input"] + usage.output_tokens * PRICE_PER_MILLION["output"]) / 1e6
-    print(f"Asked Claude: {usage.input_tokens:,} input + {usage.output_tokens:,} output tokens, about ${cost:.3f}",
-          file=sys.stderr)
+    usage = getattr(response, "usage", None)
+    if usage is None:  # the API always reports usage, but a missing figure shouldn't lose a good answer
+        print("Asked Claude: token use not reported", file=sys.stderr)
+    else:
+        cost = (usage.input_tokens * PRICE_PER_MILLION["input"] + usage.output_tokens * PRICE_PER_MILLION["output"]) / 1e6
+        print(f"Asked Claude: {usage.input_tokens:,} input + {usage.output_tokens:,} output tokens, about ${cost:.3f}",
+              file=sys.stderr)
     if response.stop_reason != "end_turn" or response.parsed_output is None:
         notes.append(f"Claude gave no usable answer (stop reason: {response.stop_reason}), so every field is not_found.")
         return None

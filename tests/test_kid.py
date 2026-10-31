@@ -291,3 +291,24 @@ def test_real_kids_note_the_charge_given_outside_the_cost_row(fund_id, figures):
     _, notes = kid.extract(read_pages(pdf))
     noted = [note.split(": ")[1].split(" on page")[0] for note in notes if "outside the cost row" in note]
     assert noted == figures
+
+
+# --- edge and invalid inputs ---------------------------------------------------------
+
+@pytest.mark.parametrize("pages", [[""], ["   \n "], ["!!! ??? 123"], ["\x00\x00"], ["", "", ""]])
+def test_pages_with_nothing_useful_give_not_found_without_crashing(pages):
+    fields, _ = kid.extract(pages)
+    assert {field.value for field in fields.values()} == {NOT_FOUND}
+
+
+def test_no_pages_is_an_error():
+    with pytest.raises(ValueError):
+        kid.extract([])
+
+
+def test_very_large_pages_are_read_quickly():
+    import time
+    pages = ["What are the costs? " + "Other ongoing costs 0.5% " * 20000] * 3  # about 1.5 MB of text
+    start = time.time()
+    kid.extract(pages)
+    assert time.time() - start < 5  # no runaway pattern matching

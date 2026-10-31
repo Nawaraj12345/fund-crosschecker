@@ -308,3 +308,43 @@ def test_unseen_and_factsheets_cant_be_combined(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["fundcrosschecker", "score", "--unseen", "--factsheets"])
     with pytest.raises(SystemExit):
         cli.main()
+
+
+# --- duplicates and empty runs (found 2026-10-31) --------------------------------------
+
+def test_a_document_extracted_twice_is_scored_once():
+    results, _, problems = score([key_row("F16"), key_row("F16")], [key_row("F16")])
+    assert len(results) == len(SCORED_FIELDS)
+    assert problems == ["F16 was extracted more than once; it was scored once."]
+
+
+def test_a_document_twice_in_the_answer_key_is_reported():
+    results, _, problems = score([key_row("F16")], [key_row("F16", isin="A"), key_row("F16", isin="B")])
+    assert [r.key_value for r in results if r.field == "isin"] == ["A"]  # the first row is used
+    assert problems == ["F16 is in the answer key more than once; only its first row was used."]
+
+
+def test_nothing_scored_is_not_recorded(tmp_path):
+    assert not record([], tmp_path / "scores.csv", "2026-10-31", "abc")
+    assert not (tmp_path / "scores.csv").exists()
+
+
+def test_an_empty_answer_key_records_nothing(project, capsys):
+    extracted, key, results = scoring_files(project)
+    key.write_text("fund_id,doc_type," + ",".join(SCORED_FIELDS) + "\n")  # header only
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "scoring files")
+    assert run(extracted, key, results, project) == 0
+    assert "Not recorded: nothing was scored." in capsys.readouterr().out
+    assert not results.exists()
+
+
+def test_a_duplicate_in_the_answer_key_blocks_recording(project, capsys):
+    extracted, key, results = scoring_files(project)
+    with key.open("a") as f:
+        f.write("F16,kid," + ",".join(["not_found"] * len(SCORED_FIELDS)) + "\n")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "scoring files")
+    run(extracted, key, results, project)
+    assert "the answer key has a document twice" in capsys.readouterr().out
+    assert not results.exists()

@@ -42,7 +42,13 @@ def pdf_files(paths: list[Path], doc_type: str) -> tuple[list[Path], int]:
             files.extend(sorted(path.glob(f"*_{doc_type}.pdf")))
         else:
             files.append(path)
-    return files, missing
+    # The same file given twice (a folder and one of its files) is read once, so it isn't scored twice.
+    unique, seen = [], set()
+    for path in files:
+        if path.resolve() not in seen:
+            seen.add(path.resolve())
+            unique.append(path)
+    return unique, missing
 
 
 def main() -> int:

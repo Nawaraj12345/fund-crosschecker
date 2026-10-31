@@ -120,6 +120,42 @@ def test_each_request_reports_its_cost(tmp_path, capsys):
     assert "Asked Claude" not in capsys.readouterr().err
 
 
+def test_cost_line_at_the_edges(tmp_path, capsys):
+    client = FakeClient(good_answers())
+    client._response.usage = SimpleNamespace(input_tokens=0, output_tokens=0)  # zero
+    run(client, tmp_path)
+    assert "0 input + 0 output tokens, about $0.000" in capsys.readouterr().err
+    client = FakeClient(good_answers())
+    client._response.usage = SimpleNamespace(input_tokens=999_999_999, output_tokens=123_456_789)  # very large
+    factsheet.extract(PAGES, "cd" * 32, client, tmp_path / "llm")
+    assert "999,999,999 input + 123,456,789 output tokens, about $6469.136" in capsys.readouterr().err
+
+
+def test_missing_usage_keeps_the_answer(tmp_path, capsys):
+    client = FakeClient(good_answers())
+    client._response.usage = None  # invalid: the API always sends usage, but it mustn't lose a good answer
+    fields, _ = run(client, tmp_path)
+    assert fields["ongoing_charge_pct"].value == "0.45"
+    assert "token use not reported" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("damage", ["{not json", '{"fund_name": {"value": "x", "page": 1, "quote": "x"}}'])
+def test_a_damaged_cache_file_stops_with_a_clear_message(tmp_path, damage):
+    cache = tmp_path / "llm"
+    cache.mkdir()
+    (cache / f"{factsheet.cache_key(SHA)}.json").write_text(damage)  # bad JSON, or fields missing
+    client = FakeClient(good_answers())
+    with pytest.raises(ValueError, match="damaged or incomplete; delete it to ask Claude again"):
+        factsheet.extract(PAGES, SHA, client, cache)
+    assert client.requests == []  # not replaced by asking again, which would cost money
+
+
+def test_all_not_found_is_a_valid_answer(tmp_path):
+    fields, notes = run(FakeClient({name: answer() for name in factsheet.FIELDS}), tmp_path)
+    assert {f.value for f in fields.values()} == {NOT_FOUND}
+    assert notes == []
+
+
 def test_answers_are_cached(tmp_path):
     client = FakeClient(good_answers())
     first, _ = run(client, tmp_path)

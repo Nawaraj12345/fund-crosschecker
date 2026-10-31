@@ -181,3 +181,65 @@ def test_good_formats_pass(name, value):
 @pytest.mark.parametrize("value, number", [("0.8", 0.8), ("0.00", 0.0), ("0", 0.0), ("1.52", 1.52), ("N/A", None), ("1,5", None), ("", None)])
 def test_to_number(value, number):
     assert to_number(value) == number
+
+
+# --- edge cases just past the limits ------------------------------------------------
+
+@pytest.mark.parametrize("name, value, problem", [
+    ("ongoing_charge_pct", "5.01", "not a percentage from 0 to 5"),   # just over the top
+    ("ongoing_charge_pct", "-0.1", "not a percentage from 0 to 5"),   # below zero
+    ("ongoing_charge_pct", "", "not a percentage from 0 to 5"),       # empty
+    ("risk_score", "0", "not a whole number from 1 to 7"),            # just under the bottom
+    ("risk_score", "07", "not a whole number from 1 to 7"),
+    ("risk_score", " 7", "not a whole number from 1 to 7"),
+    ("doc_date", "2026-9-30", "not a YYYY-MM-DD date"),
+    ("doc_date", "", "not a YYYY-MM-DD date"),
+    ("isin", "", "not a valid ISIN"),
+])
+def test_format_problems_at_the_edges(name, value, problem):
+    assert format_problem(name, value, TODAY) == problem
+
+
+@pytest.mark.parametrize("page, quote, reason", [
+    (3, "Ongoing charges 0.45%", "page 3 doesn't exist"),     # past the last page
+    (-1, "Ongoing charges 0.45%", "page -1 doesn't exist"),
+    (0, "Ongoing charges 0.45%", "no page or quote"),
+    (1, "", "no page or quote"),
+    (1, "   ", "value not in its quote"),
+])
+def test_bad_pages_and_quotes_are_removed(page, quote, reason):
+    fields, notes = {"ongoing_charge_pct": Field("0.45", page, quote)}, []
+    check_fields(fields, ["Ongoing charges 0.45%", "page two"], notes, TODAY)
+    assert fields["ongoing_charge_pct"].value == NOT_FOUND
+    assert reason in notes[0]
+
+
+@pytest.mark.parametrize("value, number", [(".5", None), ("5.", None), ("-0.5", None), ("1e3", None), (" 1", None)])
+def test_to_number_rejects_other_forms(value, number):
+    assert to_number(value) == number
+
+
+# --- known weaknesses (found 2026-10-31) ---------------------------------------------
+# checks.py stays unchanged until the unseen-trusts KID run, so these are recorded as
+# expected failures. strict=True: once fixed, these tests fail until the marker is removed.
+FROZEN = "known weakness in checks.py, frozen until the unseen-trusts KID run"
+
+
+@pytest.mark.xfail(strict=True, reason=FROZEN)
+@pytest.mark.parametrize("value, quote", [
+    ("1", "Ongoing charges 1.5%"),      # a whole number inside a decimal
+    ("1", "Total costs £1,000"),        # inside a number with a thousands comma
+    ("0.5", "Performance -0.5%"),       # the sign is ignored
+])
+def test_a_number_inside_another_number_is_not_accepted(value, quote):
+    fields, notes = {"ongoing_charge_pct": Field(value, 1, quote)}, []
+    check_fields(fields, [quote], notes, TODAY)
+    assert fields["ongoing_charge_pct"].value == NOT_FOUND
+
+
+@pytest.mark.xfail(strict=True, reason=FROZEN)
+def test_an_empty_text_value_is_not_accepted():
+    # factsheet.py turns an empty answer into not_found itself; the shared check doesn't.
+    fields, notes = {"fund_name": Field("", 1, "F&C Investment Trust PLC")}, []
+    check_fields(fields, ["F&C Investment Trust PLC"], notes, TODAY)
+    assert fields["fund_name"].value == NOT_FOUND
