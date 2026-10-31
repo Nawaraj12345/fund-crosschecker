@@ -1,12 +1,13 @@
-"""Command line: extract the figures from trust KIDs.
+"""Command line: extract the figures from trust KIDs, and score them.
 
     .venv/bin/python -m fundcrosscheck kid pdfs/F16_kid.pdf
     .venv/bin/python -m fundcrosscheck kid pdfs/          (every *_kid.pdf in the folder)
+    .venv/bin/python -m fundcrosscheck score              (compare with the answer key)
 
-Writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
+`kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
 project folder, wherever the command is run from. The CSV holds only the KIDs
 from the latest run (a run that reads none leaves it as it was); JSON files
-from earlier runs are left as they are.
+from earlier runs are left as they are. `score` is described in score.py.
 """
 
 import argparse
@@ -15,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import kid, output
+from . import kid, output, score
 from .pdftext import read_pages
 
 OUTPUT = Path(__file__).resolve().parent.parent / "output"
@@ -40,7 +41,11 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     kid_cmd = sub.add_parser("kid", help="extract figures from trust KIDs")
     kid_cmd.add_argument("paths", nargs="+", type=Path, help="KID PDFs, or folders of them")
+    sub.add_parser("score", help="compare output/kid_extracted.csv with the answer key")
     args = parser.parse_args()
+
+    if args.command == "score":
+        return score.run()
 
     files, failed = kid_files(args.paths)
     if not files:

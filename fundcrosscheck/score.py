@@ -1,0 +1,200 @@
+"""Score the KID extractor against the answer key (Story 2.2, step 3).
+
+Every scored value is one of:
+  correct
+  wrong     both have a value, but they differ
+  missed    the answer key has a value, the tool says not_found
+  made up   the answer key says not_found, the tool gives a value. The worst
+            kind: it's how a wrong cost gets passed on to a client.
+
+A full run (every KID in the answer key, extracted by the current code) adds
+one row per field to results/kid_scores.csv, unless it's the same as the last
+recorded run. That file holds counts only, never text from the PDFs, so it's
+committed and keeps a history of the score.
+"""
+
+import csv
+import subprocess
+from collections import Counter
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+
+from .checks import to_number
+from .common import NOT_FOUND, normalise
+
+PROJECT = Path(__file__).resolve().parent.parent
+EXTRACTED = PROJECT / "output" / "kid_extracted.csv"
+ANSWER_KEY = PROJECT / "data" / "answer_key.csv"
+RESULTS = PROJECT / "results" / "kid_scores.csv"
+
+SCORED_FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",
+                 "transaction_cost_pct", "total_cost_pct", "risk_score", "risk_method", "doc_date"]
+NUMBER_FIELDS = {"ongoing_charge_pct", "transaction_cost_pct", "total_cost_pct", "risk_score"}
+EXACT_FIELDS = {"doc_date", "isin", "risk_method"}
+KINDS = ["correct", "wrong", "missed", "made up"]
+RESULT_COLUMNS = ["run_date", "git_commit", "field", "correct", "wrong", "missed", "made_up"]
+
+
+@dataclass
+class Result:
+    fund_id: str
+    field: str
+    kind: str
+    key_value: str
+    tool_value: str
+
+
+def matches(field: str, key_value: str, tool_value: str) -> bool:
+    """Story 2.2's matching rules.
+
+    not_found only matches not_found. Numbers match as numbers (0.8 = 0.80,
+    0 = 0.00). Dates, ISINs and risk methods must be exactly equal. Names,
+    share classes and labels ignore case, extra spaces and curly vs straight quotes.
+    """
+    if NOT_FOUND in (key_value, tool_value):
+        return key_value == tool_value
+    if field in NUMBER_FIELDS:
+        key_number, tool_number = to_number(key_value), to_number(tool_value)
+        return key_number is not None and key_number == tool_number
+    if field in EXACT_FIELDS:
+        return key_value == tool_value
+    return normalise(key_value).casefold() == normalise(tool_value).casefold()
+
+
+def classify(field: str, key_value: str, tool_value: str) -> str:
+    if matches(field, key_value, tool_value):
+        return "correct"
+    if tool_value == NOT_FOUND:
+        return "missed"
+    if key_value == NOT_FOUND:
+        return "made up"
+    return "wrong"
+
+
+def score(extracted: list[dict], answer_key: list[dict]) -> tuple[list[Result], list[str], list[str]]:
+    """Compare each extracted KID with its answer key row.
+
+    Returns the results, the answer key KIDs that weren't extracted, and
+    problems (an extracted KID that isn't in the answer key). An empty answer
+    key cell means "not checked yet", so it isn't scored.
+    """
+    key_rows = {row["fund_id"]: row for row in answer_key if row["doc_type"] == "kid"}
+    results, problems = [], []
+    for row in extracted:
+        fund_id = row["fund_id"]
+        if fund_id not in key_rows:
+            problems.append(f"{fund_id} isn't in the answer key, so it wasn't scored.")
+            continue
+        for field in SCORED_FIELDS:
+            key_value = key_rows[fund_id][field]
+            if key_value == "":
+                continue
+            results.append(Result(fund_id, field, classify(field, key_value, row[field]), key_value, row[field]))
+    not_extracted = sorted(set(key_rows) - {row["fund_id"] for row in extracted})
+    return results, not_extracted, problems
+
+
+def counts_by(results: list[Result], attribute: str) -> dict[str, Counter]:
+    table: dict[str, Counter] = {}
+    for result in results:
+        table.setdefault(getattr(result, attribute), Counter())[result.kind] += 1
+    return table
+
+
+def is_stale(extracted_csv: Path, code_dir: Path) -> bool:
+    """True if any code file changed after the CSV was written, so the CSV may not match the code."""
+    newest_code = max(path.stat().st_mtime for path in code_dir.glob("*.py"))
+    return extracted_csv.stat().st_mtime < newest_code
+
+
+def git_commit(project: Path) -> str:
+    """The current commit, marked "+uncommitted" if the code or the answer key
+    has changed since, because then that commit alone can't reproduce the score."""
+    try:
+        sha = _git(project, "rev-parse", "--short", "HEAD")
+        changed = _git(project, "status", "--porcelain", "--", "fundcrosscheck", "data/answer_key.csv")
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    return f"{sha}+uncommitted" if changed else sha
+
+
+def _git(project: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=project, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def record(results: list[Result], path: Path, run_date: str, commit: str) -> bool:
+    """Add one summary row per field to the results CSV (header written once).
+
+    Returns False, writing nothing, if the last recorded run had the same
+    commit and the same counts: running the scorer again adds no history.
+    """
+    by_field = counts_by(results, "field")
+    rows = [[run_date, commit, field, str(c["correct"]), str(c["wrong"]), str(c["missed"]), str(c["made up"])]
+            for field, c in ((f, by_field[f]) for f in SCORED_FIELDS if f in by_field)]
+    if path.exists():
+        with path.open(encoding="utf-8", newline="") as f:
+            previous = list(csv.reader(f))[1:]
+        if [row[1:] for row in previous[-len(rows):]] == [row[1:] for row in rows]:
+            return False
+    new_file = not path.exists() or path.stat().st_size == 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        if new_file:
+            writer.writerow(RESULT_COLUMNS)
+        writer.writerows(rows)
+    return True
+
+
+def print_report(results: list[Result]) -> None:
+    total = Counter(result.kind for result in results)
+    print(f"{total['correct']} of {len(results)} values correct "
+          f"(wrong {total['wrong']}, missed {total['missed']}, made up {total['made up']})")
+    for title, attribute in (("By field", "field"), ("By KID", "fund_id")):
+        print(f"\n{title:<22}" + "".join(f"{kind:>9}" for kind in KINDS))
+        for name, c in counts_by(results, attribute).items():
+            print(f"{name:<22}" + "".join(f"{c[kind]:>9}" for kind in KINDS))
+    not_correct = [r for r in results if r.kind != "correct"]
+    if not_correct:
+        print("\nNot correct (answer key vs tool)")
+        for r in not_correct:
+            print(f"{r.fund_id}  {r.field:<22}{r.kind:<9} {r.key_value!r} vs {r.tool_value!r}")
+
+
+def read_csv(path: Path) -> list[dict]:
+    with path.open(encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_path: Path = RESULTS) -> int:
+    """The `score` command."""
+    if not extracted_path.exists():
+        print(f"No {extracted_path}: run the extractor first (python -m fundcrosscheck kid pdfs/).")
+        return 1
+    if not key_path.exists():
+        print(f"No answer key at {key_path}.")
+        return 1
+    extracted, answer_key = read_csv(extracted_path), read_csv(key_path)
+    needed = {"fund_id", *SCORED_FIELDS}
+    for name, rows, columns in (("extractor output", extracted, needed), ("answer key", answer_key, needed | {"doc_type"})):
+        missing = sorted(columns - set(rows[0] if rows else columns))
+        if missing:
+            print(f"The {name} is missing columns: {', '.join(missing)}.")
+            return 1
+    results, not_extracted, problems = score(extracted, answer_key)
+    for problem in problems:
+        print(problem)
+    print_report(results)
+
+    # Only a full run of the current code goes into the history, so the rows stay comparable.
+    if not_extracted:
+        print(f"\nNot recorded: {len(not_extracted)} KID(s) weren't extracted ({', '.join(not_extracted)}). "
+              "Run the extractor on pdfs/ to score them all.")
+    elif is_stale(extracted_path, PROJECT / "fundcrosscheck"):
+        print("\nNot recorded: the code changed after the extractor last ran. Run it again first.")
+    elif record(results, results_path, date.today().isoformat(), git_commit(PROJECT)):
+        print(f"\nRecorded in {results_path}")
+    else:
+        print("\nNot recorded again: same commit and same counts as the last recorded run.")
+    return 0
