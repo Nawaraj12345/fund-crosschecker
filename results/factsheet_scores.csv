@@ -1,0 +1,11 @@
+run_date,git_commit,field,correct,wrong,missed,made_up
+2026-10-31,2afe51c,fund_name,15,4,0,0
+2026-10-31,2afe51c,isin,19,0,0,0
+2026-10-31,2afe51c,share_class,17,2,0,0
+2026-10-31,2afe51c,ongoing_charge_pct,18,0,1,0
+2026-10-31,2afe51c,charge_label,13,1,5,0
+2026-10-31,2afe51c,transaction_cost_pct,19,0,0,0
+2026-10-31,2afe51c,total_cost_pct,19,0,0,0
+2026-10-31,2afe51c,risk_score,15,0,4,0
+2026-10-31,2afe51c,risk_method,18,0,1,0
+2026-10-31,2afe51c,doc_date,14,0,5,0
