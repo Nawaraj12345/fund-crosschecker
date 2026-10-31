@@ -12,14 +12,18 @@ It's for a fund selector at a wealth manager: someone who passes a trust's cost 
 
 ## What it does today
 
-The project is in Sprint 2. So far it reads trust KIDs:
+The project is in Sprint 2. It reads trust KIDs with rules, and factsheets with Claude.
+
+**Trust KIDs:**
 
 - **Extracts 10 fields** from each KID: fund name, ISIN, share class, ongoing charge and its label, transaction cost, total cost, risk score, risk method and document date. Each value it finds comes with the page and the exact text it was read from.
 - **Checks every value before saving it.** It checks the format (ISIN check digit, percentages from 0 to 5, risk score 1 to 7, a real date) and that the quoted text really is on that page and contains the value. A value that fails either check becomes `not_found`, with the reason in the notes, so the tool never reports a number it can't point to in the document.
 - **Reads cost tables**, including the awkward layouts: rows where the description column is mixed in, labels split over two lines, figures given as N/A or only as a £ amount. When the KID states a charge somewhere else, such as in its text, the notes record it with its page.
 - **Scores itself** against an answer key built from the PDFs (see [The data](#the-data)). On the 14 trust KIDs the rules were written from: **126 of 140 values correct, 0 wrong, 0 made up**. That's a development score, not yet a test on unseen documents; a test on 10 new trusts is planned. The other 14 are `not_found` so far: 9 dates written in other ways, and the names (plus two share classes) of the 3 KIDs without a "Product" heading.
 
-Not built yet: factsheets, the factsheet-versus-KID comparison itself, and a web page.
+**Factsheets (new, not scored yet):** factsheets come in a different layout from every provider, so instead of rules each factsheet's text goes to Claude (`claude-opus-5-5`), which answers each of the same 10 fields with the value, the page and the exact words it read it from. Every answer then goes through the same format checks and quote check as the KIDs, so Claude can miss a figure but can't put one in the output that the PDF doesn't show. Answers are cached by the PDF's hash, the model and the prompt, so re-running costs nothing and gives the same answers. The first scored run is next.
+
+Not built yet: the factsheet-versus-KID comparison itself, and a web page.
 
 ## How it works
 
@@ -30,6 +34,13 @@ KID (PDF)  ->  text, page by page (pdfplumber)
            ->  output/kid/<fund>_kid.json   (each value with its page and quote)
                output/kid_extracted.csv      (same columns as the answer key)
            ->  scorer (fundcrosschecker/score.py)  ->  results/kid_scores.csv
+
+Factsheet (PDF)  ->  text, page by page (pdfplumber)
+                 ->  Claude answers each field with value, page and quote (fundcrosschecker/factsheet.py),
+                     cached in output/llm/
+                 ->  the same format checks and quote check (fundcrosschecker/checks.py)
+                 ->  output/factsheet/ and output/factsheet_extracted.csv
+                 ->  scorer  ->  results/factsheet_scores.csv
 ```
 
 pdfplumber was chosen over PyMuPDF after a comparison on the trust KIDs (`spikes/compare_pdf_libs.py`). It read the cost tables as separate cells and kept F09's risk sentence in its place on the page, where PyMuPDF did neither, and it has an MIT licence. One limit: on two-column pages it merges the columns line by line, so a sentence that wraps inside one column comes out in pieces.
@@ -52,10 +63,14 @@ Run these from the project folder:
 .venv/bin/python -m fundcrosschecker score              # compare with the answer key
 .venv/bin/python -m fundcrosschecker kid pdfs/unseen/   # the unseen trusts
 .venv/bin/python -m fundcrosschecker score --unseen     # scored apart from the development score
+.venv/bin/python -m fundcrosschecker factsheet pdfs/    # every *_factsheet.pdf, read by Claude
+.venv/bin/python -m fundcrosschecker score --factsheets # compare with the factsheet rows
 .venv/bin/python -m pytest                              # run the tests
 ```
 
-The tests don't need the PDFs. The one test that reads a real KID skips itself when `pdfs/` isn't there.
+The tests don't need the PDFs or an API key: the one test that reads a real KID skips itself when `pdfs/` isn't there, and the factsheet tests use a stand-in for Claude.
+
+The `factsheet` command needs your own Anthropic API key (create one at https://console.anthropic.com/, then `export ANTHROPIC_API_KEY=...` in the terminal). Reading all 19 factsheets the first time costs roughly $1–2; after that the cached answers are used.
 
 ## The data
 
@@ -69,12 +84,12 @@ Every answer key value was checked against its PDF's text by script, and every r
 ## Project layout
 
 ```
-fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, checks.py, score.py, output.py, common.py
+fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, factsheet.py, checks.py, score.py, output.py, common.py
 tests/             unit tests; the extractor's and checks' tests use real wording from the KIDs
 spikes/            the PDF library comparison
 data/              sources, answer key and their rules
 results/           score history (counts only), committed; the unseen trusts' in their own file
-output/            extractor output, holds text from the PDFs, never committed
+output/            extractor output and Claude's cached answers, hold text from the PDFs, never committed
 pdfs/              the downloaded PDFs, never committed
 ```
 
@@ -82,6 +97,6 @@ pdfs/              the downloaded PDFs, never committed
 
 | When | What |
 |---|---|
-| Sprint 2 (to 29 Nov 2026) | Finish the trust KIDs: other date and name wordings. Test on 10 trusts the tool hasn't seen. Then factsheets |
+| Sprint 2 (to 29 Nov 2026) | Test on 10 trusts the tool hasn't seen. First scored run of the factsheets. Then the trust KIDs' other date and name wordings |
 | Sprint 3 (30 Nov – 13 Dec 2026) | The ordinary funds' KIIDs (the controls), then the comparison: match, mismatch, or can't compare, with the likely reason |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |

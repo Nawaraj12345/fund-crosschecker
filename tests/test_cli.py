@@ -1,0 +1,55 @@
+"""Tests for the command line's extraction loop (no PDFs or API key needed)."""
+
+import pytest
+
+import fundcrosschecker.__main__ as cli
+from fundcrosschecker.common import NOT_FOUND, Field
+
+
+@pytest.fixture
+def folder(tmp_path, monkeypatch):
+    """A folder with two fake factsheets and one KID; output goes to tmp_path/output."""
+    pdfs = tmp_path / "pdfs"
+    pdfs.mkdir()
+    for name in ("F01_factsheet.pdf", "F02_factsheet.pdf", "F16_kid.pdf"):
+        (pdfs / name).write_bytes(b"%PDF fake " + name.encode())
+    monkeypatch.setattr(cli, "OUTPUT", tmp_path / "output")
+    monkeypatch.setattr(cli, "read_pages", lambda path: ["page one"])
+    return pdfs
+
+
+def fields():
+    return {"fund_name": Field("A Fund", 1, "A Fund"), "isin": Field(NOT_FOUND)}, []
+
+
+def test_a_folder_gives_only_its_documents_of_that_type(folder):
+    seen = []
+    assert cli.extract_all([folder], "factsheet", lambda pages, sha: seen.append(sha) or fields()) == 0
+    assert len(seen) == 2  # the two factsheets, not the KID
+    csv_text = (folder.parent / "output" / "factsheet_extracted.csv").read_text()
+    assert "F01,factsheet,A Fund" in csv_text and "F16" not in csv_text
+    assert (folder.parent / "output" / "factsheet" / "F02_factsheet.json").exists()
+
+
+def test_a_missing_key_gives_one_hint(folder, capsys):
+    def no_key(pages, sha):
+        raise TypeError("Could not resolve authentication method. Expected one of api_key ...")
+
+    assert cli.extract_all([folder], "factsheet", no_key) == 1
+    err = capsys.readouterr().err
+    assert err.count("Couldn't extract") == 2
+    assert err.count("No Anthropic API key found") == 1
+    assert not (folder.parent / "output" / "factsheet_extracted.csv").exists()
+
+
+def test_other_errors_give_no_key_hint(folder, capsys):
+    def broken(pages, sha):
+        raise ValueError("the PDF has no pages")
+
+    assert cli.extract_all([folder], "factsheet", broken) == 1
+    assert "API key" not in capsys.readouterr().err
+
+
+def test_kid_messages_still_say_kid(folder, capsys):
+    cli.extract_all([folder], "kid", lambda pages, sha: fields())
+    assert "1 KID(s) written" in capsys.readouterr().out

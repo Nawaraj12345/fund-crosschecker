@@ -73,6 +73,15 @@ def test_factsheet_rows_in_the_answer_key_are_ignored():
     assert not_extracted == []
 
 
+def test_factsheets_are_scored_against_factsheet_rows_only():
+    factsheet = key_row("F16", isin="GB00BS88V647")
+    factsheet["doc_type"] = "factsheet"
+    extracted = key_row("F16", isin="GB00BS88V647")
+    results, not_extracted, _ = score([extracted], [key_row("F16"), factsheet], doc_type="factsheet")
+    assert all(r.kind == "correct" for r in results)  # the KID row (isin not_found) would make isin "made up"
+    assert not_extracted == []
+
+
 def test_kids_not_extracted_and_unknown_kids_are_reported():
     results, not_extracted, problems = score([key_row("F16"), key_row("F99")], [key_row("F16"), key_row("F19")])
     assert {r.fund_id for r in results} == {"F16"}
@@ -281,10 +290,21 @@ def test_score_unseen_uses_the_unseen_files(monkeypatch):
     for argv, expected in ((["score"], {}),
                            (["score", "--unseen"], {"key_path": score_module.UNSEEN_KEY,
                                                     "results_path": score_module.UNSEEN_RESULTS,
-                                                    "inputs": UNSEEN_INPUTS, "pdf_folder": "pdfs/unseen/"})):
+                                                    "inputs": UNSEEN_INPUTS, "pdf_folder": "pdfs/unseen/"}),
+                           (["score", "--factsheets"], {"extracted_path": score_module.EXTRACTED_FACTSHEETS,
+                                                        "results_path": score_module.FACTSHEET_RESULTS,
+                                                        "doc_type": "factsheet"})):
         monkeypatch.setattr(sys, "argv", ["fundcrosschecker", *argv])
         assert cli.main() == 0
         assert calls.pop() == expected
     assert score_module.UNSEEN_KEY.parts[-3:] == ("data", "unseen", "answer_key.csv")
     assert score_module.UNSEEN_RESULTS.name == "unseen_kid_scores.csv"
     assert score_module.UNSEEN_RESULTS != score_module.RESULTS
+    assert len({score_module.RESULTS, score_module.UNSEEN_RESULTS, score_module.FACTSHEET_RESULTS}) == 3
+
+
+def test_unseen_and_factsheets_cant_be_combined(monkeypatch):
+    # There's no unseen factsheet answer key yet, so asking for both is an error, not a silent choice.
+    monkeypatch.setattr(sys, "argv", ["fundcrosschecker", "score", "--unseen", "--factsheets"])
+    with pytest.raises(SystemExit):
+        cli.main()

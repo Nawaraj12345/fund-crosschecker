@@ -1,4 +1,4 @@
-"""Score the KID extractor against the answer key (Story 2.2, step 3).
+"""Score the KID and factsheet extractors against the answer key (Stories 2.2 and 2.1).
 
 Every scored value is one of:
   correct
@@ -17,6 +17,11 @@ committed and keeps a history of the score.
 PDFs in pdfs/unseen/), recording in results/unseen_kid_scores.csv, so their
 score is never mixed with the development score. The first recorded run there
 is the honest figure; any run after the rules change is a development score again.
+
+`score --factsheets` scores output/factsheet_extracted.csv against the answer
+key's factsheet rows, recording in results/factsheet_scores.csv. Claude reads
+the factsheets, so a recorded row is reproducible from its commit together with
+the cached answers in output/llm/ (asking Claude again can give other answers).
 """
 
 import csv
@@ -35,6 +40,9 @@ ANSWER_KEY = PROJECT / "data" / "answer_key.csv"
 RESULTS = PROJECT / "results" / "kid_scores.csv"
 UNSEEN_KEY = PROJECT / "data" / "unseen" / "answer_key.csv"
 UNSEEN_RESULTS = PROJECT / "results" / "unseen_kid_scores.csv"
+EXTRACTED_FACTSHEETS = PROJECT / "output" / "factsheet_extracted.csv"
+FACTSHEET_RESULTS = PROJECT / "results" / "factsheet_scores.csv"
+LABELS = {"kid": "KID", "factsheet": "factsheet"}
 
 SCORED_FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",
                  "transaction_cost_pct", "total_cost_pct", "risk_score", "risk_method", "doc_date"]
@@ -80,14 +88,15 @@ def classify(field: str, key_value: str, tool_value: str) -> str:
     return "wrong"
 
 
-def score(extracted: list[dict], answer_key: list[dict]) -> tuple[list[Result], list[str], list[str]]:
-    """Compare each extracted KID with its answer key row.
+def score(extracted: list[dict], answer_key: list[dict],
+          doc_type: str = "kid") -> tuple[list[Result], list[str], list[str]]:
+    """Compare each extracted document with its answer key row of the same doc_type.
 
-    Returns the results, the answer key KIDs that weren't extracted, and
-    problems (an extracted KID that isn't in the answer key). An empty answer
+    Returns the results, the answer key documents that weren't extracted, and
+    problems (an extracted document that isn't in the answer key). An empty answer
     key cell means "not checked yet", so it isn't scored.
     """
-    key_rows = {row["fund_id"]: row for row in answer_key if row["doc_type"] == "kid"}
+    key_rows = {row["fund_id"]: row for row in answer_key if row["doc_type"] == doc_type}
     results, problems = [], []
     for row in extracted:
         fund_id = row["fund_id"]
@@ -170,7 +179,7 @@ def print_report(results: list[Result]) -> None:
     total = Counter(result.kind for result in results)
     print(f"{total['correct']} of {len(results)} values correct "
           f"(wrong {total['wrong']}, missed {total['missed']}, made up {total['made up']})")
-    for title, attribute in (("By field", "field"), ("By KID", "fund_id")):
+    for title, attribute in (("By field", "field"), ("By document", "fund_id")):
         print(f"\n{title:<22}" + "".join(f"{kind:>9}" for kind in KINDS))
         for name, c in counts_by(results, attribute).items():
             print(f"{name:<22}" + "".join(f"{c[kind]:>9}" for kind in KINDS))
@@ -187,10 +196,11 @@ def read_csv(path: Path) -> list[dict]:
 
 
 def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_path: Path = RESULTS,
-        project: Path = PROJECT, inputs: tuple[str, ...] = SCORE_INPUTS, pdf_folder: str = "pdfs/") -> int:
-    """The `score` command. `inputs` are the files a score depends on; `pdf_folder` is where its KIDs are."""
+        project: Path = PROJECT, inputs: tuple[str, ...] = SCORE_INPUTS, pdf_folder: str = "pdfs/",
+        doc_type: str = "kid") -> int:
+    """The `score` command. `inputs` are the files a score depends on; `pdf_folder` is where its PDFs are."""
     if not extracted_path.exists():
-        print(f"No {extracted_path}: run the extractor first (python -m fundcrosschecker kid {pdf_folder}).")
+        print(f"No {extracted_path}: run the extractor first (python -m fundcrosschecker {doc_type} {pdf_folder}).")
         return 1
     if not key_path.exists():
         print(f"No answer key at {key_path}.")
@@ -202,7 +212,7 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
         if missing:
             print(f"The {name} is missing columns: {', '.join(missing)}.")
             return 1
-    results, not_extracted, problems = score(extracted, answer_key)
+    results, not_extracted, problems = score(extracted, answer_key, doc_type)
     for problem in problems:
         print(problem)
     print_report(results)
@@ -210,7 +220,7 @@ def run(extracted_path: Path = EXTRACTED, key_path: Path = ANSWER_KEY, results_p
     # Only a full run of the current, committed code goes into the history, so the rows stay comparable.
     commit = git_commit(project, inputs)
     if not_extracted:
-        print(f"\nNot recorded: {len(not_extracted)} KID(s) weren't extracted ({', '.join(not_extracted)}). "
+        print(f"\nNot recorded: {len(not_extracted)} {LABELS[doc_type]}(s) weren't extracted ({', '.join(not_extracted)}). "
               f"Run the extractor on {pdf_folder} to score them all.")
     elif is_stale(extracted_path, project / "fundcrosschecker"):
         print("\nNot recorded: the code changed after the extractor last ran. Run it again first.")
