@@ -150,18 +150,25 @@ def test_the_request(tmp_path):
     assert "Ongoing charges 0.45%" in content
 
 
+def one_line(text):
+    """Spaces and line breaks as single spaces, so re-wrapping the prompt doesn't break the test."""
+    return " ".join(text.split())
+
+
 @pytest.mark.parametrize("rule", [
     "Record only what is printed.",
-    "never fill a gap from what the rules\nsay should be there",
-    # Each of these stopped a made-up value on the development factsheets:
-    "A\n  mention in descriptive or legal text",            # F16's share class (v2)
-    "An\n  expense ratio or charge",                         # F16's total cost (v3)
+    "never fill a gap from what the rules say should be there",
+    # Added in prompt v3, after v2 made up F16's share class from a legal sentence:
+    "A mention in descriptive or legal text",
+    # Added in prompt v4, after v3 made up F16's total cost from "Total expenses" (two lines of one rule):
+    "An expense ratio or charge",
     "is not this field.",
-    "never add a date or period from\n  elsewhere",         # F11's label (v2)
+    # Added in prompt v3, after v2 added a date from elsewhere to F11's label:
+    "never add a date or period from elsewhere",
 ])
-def test_the_prompt_keeps_its_rules_against_made_up_values(rule):
+def test_the_prompt_keeps_its_key_rules(rule):
     # Changing one of these should be a deliberate decision, so it has to change this test too.
-    assert rule in factsheet.SYSTEM_PROMPT
+    assert one_line(rule) in one_line(factsheet.SYSTEM_PROMPT)
 
 
 def test_every_answer_key_field_is_asked_for():
