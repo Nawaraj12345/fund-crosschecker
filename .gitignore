@@ -61,3 +61,6 @@ Thumbs.db
 
 # --- Logs ---
 *.log
+
+# --- Extractor output (holds quotes from the PDFs, so never committed) ---
+output/

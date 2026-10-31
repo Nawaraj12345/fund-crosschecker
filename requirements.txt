@@ -1,0 +1,12 @@
+# Python 3.10 or later (the code uses "str | None" type hints); built on 3.12.6.
+#
+# Pinned exactly: pdfminer.six (used by pdfplumber) turns the PDFs into text,
+# so a new version could change the extracted text and quietly change the scores.
+pdfplumber==0.11.10
+pdfminer.six==20260107
+pypdfium2==5.14.0
+pillow==13.0.0
+charset-normalizer==3.5.2
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.12
