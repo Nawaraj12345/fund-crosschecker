@@ -23,6 +23,8 @@ RISK_NAMES = {
 MONTHS = ["January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December"]
 EARLIEST_DATE = date(2017, 1, 1)
+# Words after a share class that make it a count of shares, not the name of a class.
+SHARE_COUNT = re.compile(r" ?(?:in issue|held in treasury)\b", re.IGNORECASE)
 
 
 def check_fields(fields: dict[str, Field], pages: list[str], notes: list[str],
@@ -88,6 +90,8 @@ def quote_problem(name: str, field: Field, page_texts: list[str]) -> str | None:
     if quote not in page_texts[field.page - 1]:
         return f"quote not found on page {field.page}"
     if not value_in_quote(name, field.value, quote):
+        if name == "share_class" and normalise(field.value) in quote:
+            return "quoted only as a count of shares, not as a class"
         return "value not in its quote"
     return None
 
@@ -117,22 +121,38 @@ def value_in_quote(name: str, value: str, quote: str) -> bool:
         # The label's words must appear in the quote in order, but not side by side: a label
         # can wrap onto the next line of its table cell ("Other ongoing", then "costs" on F09).
         # Brackets and quote marks don't count ("Ratio ('OCR')"), and a quote word may carry
-        # a footnote number the label doesn't have ("OCF6", "ratio4" on factsheets).
-        in_quote = iter(words(quote))
+        # a footnote mark the label doesn't have ("OCF6", "ratio4", "chargesD" on factsheets).
+        in_quote = iter(words(quote, fold=False))
         wanted = words(value)
         return bool(wanted) and all(any(same_word(word, found) for found in in_quote) for word in wanted)
+    if name == "share_class":
+        # A line that counts the shares doesn't name a class: "Ordinary shares in Issue:
+        # 484,494,150" (F26 factsheet), "Ordinary shares held in treasury: 6,102,806" (F23).
+        # So the class must be printed somewhere in its quote without those words after it.
+        return any(not SHARE_COUNT.match(quote, found.end())
+                   for found in re.finditer(re.escape(normalise(value)), quote))
     return normalise(value) in quote
 
 
-def words(text: str) -> list[str]:
-    """The words of a text, in lower case and without punctuation."""
-    return re.findall(r"[^\W_]+", normalise(text).casefold())
+def words(text: str, fold: bool = True) -> list[str]:
+    """The words of a text without punctuation, in lower case unless `fold` is False."""
+    text = normalise(text)
+    return re.findall(r"[^\W_]+", text.casefold() if fold else text)
 
 
 def same_word(label_word: str, quote_word: str) -> bool:
-    """The same word, or the quote's word with a footnote number stuck to its end
-    ("ocf6" for "ocf"). A label word with digits must match exactly: "fy25" isn't "fy24"."""
-    return quote_word == label_word or re.sub(r"^([^\W\d_]{2,})\d{1,2}$", r"\1", quote_word) == label_word
+    """Whether a label word (in lower case) is the quote word (as printed).
+
+    The same word, or the quote's word with a footnote mark stuck to its end: one or
+    two digits ("OCF6" for "ocf"), or one capital letter after a small one ("chargesD"
+    for "charges", F21 factsheet). A capital after a capital isn't a footnote ("OCFS"
+    isn't "ocf"), and a label word with digits must match exactly: "fy25" isn't "fy24".
+    """
+    folded = quote_word.casefold()
+    if folded == label_word or re.sub(r"^([^\W\d_]{2,})\d{1,2}$", r"\1", folded) == label_word:
+        return True
+    letter_mark = len(quote_word) >= 3 and quote_word[:-1].isalpha() and quote_word[-2].islower() and quote_word[-1].isupper()
+    return letter_mark and quote_word[:-1].casefold() == label_word
 
 
 def printed_dates(iso: str) -> list[str]:

@@ -32,7 +32,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import compare, factsheet, kid, kiid, output, riskscale, score
+from . import compare, factsheet, kid, kiid, labelwrap, output, riskscale, score
 from .pdftext import read_pages
 
 OUTPUT = Path(__file__).resolve().parent.parent / "output"
@@ -40,6 +40,9 @@ LABELS = {"kid": "KID", "kiid": "KIID", "factsheet": "factsheet"}  # how each do
 # Documents whose risk score can come from the scale graphic when the text doesn't give it
 # (riskscale.py). Not KIIDs: all five give theirs in the text.
 GRAPHIC_RISK = ("kid", "factsheet")
+# Documents whose charge label can get back a bracket that wraps onto the line below
+# (labelwrap.py). Not KIDs: their rules join a wrapped label themselves.
+WRAPPED_LABELS = ("factsheet",)
 
 
 def pdf_files(paths: list[Path], doc_type: str) -> tuple[list[Path], int]:
@@ -137,7 +140,10 @@ def extract_all(paths: list[Path], doc_type: str, extract) -> int:
         fund_id = name.group(1)
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         try:  # one bad PDF shouldn't stop the others
-            fields, notes = extract(read_pages(path), sha256)
+            pages = read_pages(path)
+            fields, notes = extract(pages, sha256)
+            if doc_type in WRAPPED_LABELS:
+                labelwrap.extend_label(fields, notes, path, pages)
             if doc_type in GRAPHIC_RISK:
                 riskscale.fill_from_graphic(fields, notes, path)
         except Exception as error:

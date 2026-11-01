@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from fundcrosschecker.checks import check_fields, format_problem, printed_dates, to_number, value_in_quote
+from fundcrosschecker.checks import check_fields, format_problem, printed_dates, same_word, to_number, value_in_quote
 from fundcrosschecker.common import NOT_FOUND, Field
 
 TODAY = date(2026, 10, 31)
@@ -391,3 +391,59 @@ def test_a_risk_score_written_as_a_word(value, quote, ok):
 def test_number_words_count_only_for_the_risk_score():
     assert not value_in_quote("ongoing_charge_pct", "1", "one per cent")
     assert not value_in_quote("transaction_cost_pct", "2", "two")
+
+
+# --- after the unseen factsheet run of 1 Nov 2026 ------------------------------------------
+
+@pytest.mark.parametrize("value, quote, ok", [
+    ("Ongoing charges", "Ongoing chargesD 0.50%", True),     # F21 factsheet: footnote D
+    ("Ongoing charges", "Ongoing Charges 0.50%", True),      # case alone never mattered
+    ("Ongoing charges", "Ongoing chargesDE 0.50%", False),   # two capitals aren't a footnote mark
+    ("Ongoing charge", "Ongoing chargesD 0.50%", False),     # without its mark the word is still "charges"
+    ("Ongoing charges", "Ongoing charges5D 0.50%", False),   # a digit and a letter
+    ("OCF", "OCFS 0.73%", False),                            # a capital after a capital isn't one
+])
+def test_a_label_word_may_carry_one_capital_footnote_letter(value, quote, ok):
+    fields = {"ongoing_charge_pct": Field("1", 1, "1%"), "charge_label": Field(value, 1, quote)}
+    run(fields, [quote + " 1%"])
+    assert (fields["charge_label"].value == value) == ok
+
+
+@pytest.mark.parametrize("label_word, quote_word, same", [
+    ("charges", "chargesD", True),
+    ("charges", "CHARGES", True),
+    ("ocf", "OCF6", True),
+    ("ocf", "OCFS", False),
+    ("charges", "chargesDE", False),
+    ("a", "aB", False),          # the word left over must have two letters, as for footnote numbers
+    ("charge", "chargeS", True),  # the rule can't tell this from a plural printed oddly; the quote still has to be on the page
+])
+def test_same_word(label_word, quote_word, same):
+    assert same_word(label_word, quote_word) == same
+
+
+@pytest.mark.parametrize("value, quote, ok", [
+    ("Ordinary shares", "Ordinary shares in Issue: 484,494,150", False),         # F26: a count of shares
+    ("Ordinary shares", "Ordinary shares in issue* 623,475,335", False),         # F27
+    ("Ordinary shares", "Ordinary shares held in treasury: 6,102,806", False),   # F23
+    ("Ordinary shares", "Ordinary shares IN ISSUE 5", False),
+    ("Ordinary shares", "Ordinary shares 197,864,151", True),                    # F22: kept (its key facts name the class)
+    ("Ordinary shares", "Ordinary shares in RIT Capital Partners plc", True),    # F10 KID: "in", but not "in issue"
+    ("Ordinary shares", "Ordinary shares in issuers' markets", True),            # "issuers" isn't "issue"
+    ("Ordinary shares", "Ordinary shares in issue: 9. Ordinary shares 1.2p", True),  # also printed as a name
+    ("Class A (Acc)", "Class A (Acc) shares in issue 5", True),                  # "shares" comes first, so not a count of the class
+    ("Class A (Acc)", "Class A (Acc) in issue 5", False),                        # brackets in the value are matched as text
+])
+def test_a_share_class_from_a_count_of_shares_is_removed(value, quote, ok):
+    fields = {"share_class": Field(value, 1, quote)}
+    run(fields, [quote])
+    assert (fields["share_class"].value == value) == ok
+
+
+@pytest.mark.parametrize("quote, reason", [
+    ("Ordinary shares in Issue: 484,494,150", "quoted only as a count of shares, not as a class"),  # F26
+    ("Income shares 1.2p", "value not in its quote"),   # not in the quote at all
+])
+def test_the_note_says_why_a_share_class_was_removed(quote, reason):
+    notes = run({"share_class": Field("Ordinary shares", 1, quote)}, [quote])
+    assert notes == [f"share_class 'Ordinary shares' removed: {reason}."]
