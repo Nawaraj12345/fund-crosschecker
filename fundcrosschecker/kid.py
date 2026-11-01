@@ -385,6 +385,17 @@ CHARGE_WORDS = (r"(?:OCF|OCR|[Oo]ngoing [Cc]harges?(?: [Ff]igure| [Rr]atio)?|mos
 STATED_CHARGE = rf"{CHARGE_WORDS}(?:(?!{CHARGE_WORDS})[^%]){{0,160}}?(?<![\d.])(\d+(?:\.\d+)?) ?%"
 
 
+# The note for a charge the KID gives outside its cost row. The comparison (compare.py) reads
+# these notes back with charges_elsewhere_in(), so the wording and its parser live together here.
+ELSEWHERE_NOTE = 'Charge given outside the cost row: {figure}% on page {page} ("{quote}").'
+ELSEWHERE_PATTERN = re.compile(r'Charge given outside the cost row: (\d+(?:\.\d+)?)% on page (\d+) \("(.*?)"\)\.(?= |$)')
+
+
+def charges_elsewhere_in(notes: str) -> list[tuple[str, int, str]]:
+    """(figure, page, quote) for each charge-given-elsewhere note in a KID's notes text."""
+    return [(match.group(1), int(match.group(2)), match.group(3)) for match in ELSEWHERE_PATTERN.finditer(notes)]
+
+
 def _charges_elsewhere(pages: list[str], ongoing: Field) -> list[str]:
     """Story 2.2's notes: charge figures the KID gives outside the row used for
     the ongoing charge, with their page, for Sprint 3 to explain differences.
@@ -404,7 +415,7 @@ def _charges_elsewhere(pages: list[str], ongoing: Field) -> list[str]:
             if overlaps_used or match.group(1) in seen:
                 continue
             seen.add(match.group(1))
-            notes.append(f'Charge given outside the cost row: {match.group(1)}% on page {page_no} ("{match.group(0)}").')
+            notes.append(ELSEWHERE_NOTE.format(figure=match.group(1), page=page_no, quote=match.group(0)))
     return notes
 
 

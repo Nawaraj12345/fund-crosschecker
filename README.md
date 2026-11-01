@@ -12,7 +12,7 @@ It's for a fund selector at a wealth manager: someone who passes a trust's cost 
 
 ## What it does today
 
-The project is in Sprint 2. It reads trust KIDs and ordinary funds' KIIDs with rules, and factsheets with Claude.
+The project is in Sprint 2, with Sprint 3's work started early. It reads trust KIDs and ordinary funds' KIIDs with rules and factsheets with Claude, then compares each fund's factsheet with its KID or KIID.
 
 **Trust KIDs:**
 
@@ -25,7 +25,9 @@ The project is in Sprint 2. It reads trust KIDs and ordinary funds' KIIDs with r
 
 **Factsheets:** factsheets come in a different layout from every provider, so instead of rules each factsheet's text goes to Claude (`claude-opus-5-5`), which answers each of the same 10 fields with the value, the page and the exact words it read it from. Every answer then goes through the same format checks and quote check as the KIDs, so Claude can miss a figure but can't put one in the output that the PDF doesn't show. Answers are cached by the PDF's hash, the model and the prompt, so re-running costs nothing and gives the same answers. On the 19 development factsheets (16 providers) the latest prompt scores **184 of 190 values correct, 1 wrong, 0 made up** (the first prompt scored 167, with 7 wrong). The checks used to remove 11 answers for reasons that don't matter in factsheet text (footnote numbers stuck to labels, labels in brackets, dates such as 30-Sep-2026 or with the spaces lost, a figure split as "1 .03%"). Now they allow for those, which brought back 9 correct values. Of the other two, one is still rightly removed (its quote doesn't hold the whole label), and one now counts as wrong: Claude's label for one factsheet leaves out the "(fixed)" it prints. The other 4 `not_found` are risk scores shown only as a shaded box. An earlier prompt also showed the checks at work: they stopped a share class Claude gave for a factsheet that doesn't name one, with a quote that didn't contain it.
 
-Not built yet: the factsheet-versus-KID comparison itself, and a web page.
+**The comparison:** for each fund, the ongoing charge and the risk score get one of three verdicts, match, mismatch or can't compare, with the reasons the documents give: the KID's cost table shows 0%, the KID's own text gives another figure (or the factsheet's), the documents are a year or more apart, they're for different share classes, or one side prints nothing. These are labelled possible reasons, since they're inferences. Every value comes with its page and quote, and numbers are compared as numbers (0.6 equals 0.60) with no tolerance. On the 19 funds with both documents read (F01–F19) the ongoing charge gives **7 match, 5 mismatch, 7 can't compare**, and **0 false alarms on the 5 ordinary funds**. Against a comparison key written by hand before the comparison code, **35 of 38 verdicts are right, with 0 false alarms and 0 missed mismatches**; the 3 wrong are risk scores that three factsheets show only as a shaded box, so the tool says "can't compare" where the key says "match". Run on the answer key's own values, the comparison logic gives all 38. Two examples: Henderson Far East Income prints 1.12% on its factsheet and 1.52% in its KID for the same year, with no reason in either document; and in 4 trusts (F10, F11, F14, F19) the KID's cost table says N/A while its own text gives exactly the factsheet's figure, which the tool points out.
+
+Not built yet: the comparison for the 10 newer trusts (F20–F29), which needs their factsheets read first, and a web page.
 
 ## How it works
 
@@ -39,6 +41,9 @@ KID (PDF)  ->  text, page by page (pdfplumber)
 
 KIID (PDF)  ->  the same steps with the KIID rules (fundcrosschecker/kiid.py)
             ->  output/kiid/, output/kiid_extracted.csv  ->  results/kiid_scores.csv
+
+Each fund's factsheet and KID or KIID output  ->  comparison (fundcrosschecker/compare.py)
+            ->  output/comparison.csv  ->  scored against data/comparison_key.csv  ->  results/comparison_scores.csv
 
 Factsheet (PDF)  ->  text, page by page (pdfplumber)
                  ->  Claude answers each field with value, page and quote (fundcrosschecker/factsheet.py),
@@ -70,6 +75,8 @@ Run these from the project folder:
 .venv/bin/python -m fundcrosschecker score --unseen     # scored apart from the development score
 .venv/bin/python -m fundcrosschecker kiid pdfs/         # every *_kiid.pdf (the ordinary funds)
 .venv/bin/python -m fundcrosschecker score --kiids      # compare with the KIID rows
+.venv/bin/python -m fundcrosschecker compare            # each factsheet against its KID or KIID
+.venv/bin/python -m fundcrosschecker score --comparison # the verdicts against the comparison key
 .venv/bin/python -m fundcrosschecker factsheet pdfs/    # every *_factsheet.pdf, read by Claude
 .venv/bin/python -m fundcrosschecker score --factsheets # compare with the factsheet rows
 .venv/bin/python -m fundcrosschecker factsheet pdfs/unseen/          # the unseen trusts' factsheets
@@ -86,6 +93,7 @@ The `factsheet` command needs your own Anthropic API key (create one at https://
 - `data/sources.csv`: the 38 documents (a factsheet and a KID or KIID for each of 19 funds, F01–F19), each with its link, download date and SHA-256.
 - `data/answer_key.csv`: what each document actually says, one row per document. It's the ground truth the extractor is scored against.
 - `data/unseen/`: the same two files for the unseen-trusts test (F20 onwards), trusts that were never looked at while the rules were written. Their answer key was committed before the tool was run on them.
+- `data/comparison_key.csv`: the expected verdict for each fund's ongoing charge and risk score (F01–F19), written by hand before the comparison code.
 - `data/README.md`: the rules for every answer key column. The main rule is **record only what's printed**. `not_found` means checked and not shown; an empty cell means not checked yet.
 
 Every answer key value was checked against its PDF's text by script, and every risk score against the document's wording or its risk graphic on the rendered page. It hasn't been checked line by line by hand.
@@ -93,7 +101,7 @@ Every answer key value was checked against its PDF's text by script, and every r
 ## Project layout
 
 ```
-fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, kiid.py, factsheet.py, checks.py, score.py, output.py, common.py
+fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, kiid.py, factsheet.py, checks.py, score.py, compare.py, output.py, common.py
 tests/             unit tests; the extractors' and checks' tests use real wording from the KIDs and KIIDs
 spikes/            the PDF library comparison
 data/              sources, answer key and their rules
@@ -107,5 +115,5 @@ pdfs/              the downloaded PDFs, never committed
 | When | What |
 |---|---|
 | Sprint 2 (to 29 Nov 2026) | Done: the test on 10 trusts the tool hadn't seen (71 of 100), then the checks' known gaps, checks that allow for factsheet text, and the KID wordings that test showed up. Next: the unseen trusts' factsheets (their answer key is committed; the one run is still to do) |
-| Sprint 3 (30 Nov – 13 Dec 2026) | Done early: the ordinary funds' KIIDs (the controls, 50 of 50). Next: the comparison: match, mismatch, or can't compare, with the likely reason |
+| Sprint 3 (30 Nov – 13 Dec 2026) | Done early: the ordinary funds' KIIDs (the controls, 50 of 50) and the comparison on F01–F19 (35 of 38 verdicts, 0 false alarms). Next: the comparison for F20–F29 once their factsheets are read (a development score, since their values were looked at while designing it), and making the repo public |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |

@@ -11,6 +11,8 @@
     .venv/bin/python -m fundcrosschecker score --unseen --factsheets   (the unseen trusts' factsheets)
     .venv/bin/python -m fundcrosschecker kiid pdfs/         (every *_kiid.pdf: the ordinary funds)
     .venv/bin/python -m fundcrosschecker score --kiids
+    .venv/bin/python -m fundcrosschecker compare            (each factsheet against its KID or KIID)
+    .venv/bin/python -m fundcrosschecker score --comparison
 
 Run these from the project folder, which is where Python finds the package.
 `kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
@@ -20,7 +22,8 @@ output/factsheet_extracted.csv, and caches Claude's answers in output/llm/.
 Each CSV holds only the documents from the latest run (a run that reads none
 leaves it as it was); JSON files from earlier runs are left as they are.
 `factsheet` needs an Anthropic API key (ANTHROPIC_API_KEY) for any factsheet
-whose answer isn't cached yet. `score` is described in score.py.
+whose answer isn't cached yet. `score` is described in score.py, and `compare`
+and `score --comparison` in compare.py.
 """
 
 import argparse
@@ -29,7 +32,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import factsheet, kid, kiid, output, score
+from . import compare, factsheet, kid, kiid, output, score
 from .pdftext import read_pages
 
 OUTPUT = Path(__file__).resolve().parent.parent / "output"
@@ -65,6 +68,7 @@ def main() -> int:
     kiid_cmd.add_argument("paths", nargs="+", type=Path, help="KIID PDFs, or folders of them")
     factsheet_cmd = sub.add_parser("factsheet", help="extract figures from factsheets with Claude")
     factsheet_cmd.add_argument("paths", nargs="+", type=Path, help="factsheet PDFs, or folders of them")
+    sub.add_parser("compare", help="compare each fund's factsheet with its KID or KIID")
     score_cmd = sub.add_parser("score", help="compare the extractor's output with the answer key")
     score_cmd.add_argument("--unseen", action="store_true",
                            help="use the unseen trusts' answer key (data/unseen/) and score history")
@@ -72,9 +76,17 @@ def main() -> int:
                            help="score output/factsheet_extracted.csv instead of the KIDs")
     score_cmd.add_argument("--kiids", action="store_true",
                            help="score output/kiid_extracted.csv instead of the KIDs")
+    score_cmd.add_argument("--comparison", action="store_true",
+                           help="score output/comparison.csv against data/comparison_key.csv")
     args = parser.parse_args()
 
+    if args.command == "compare":
+        return compare.run_compare()
     if args.command == "score":
+        if args.comparison and (args.unseen or args.factsheets or args.kiids):
+            parser.error("--comparison can't be combined with the other score options")
+        if args.comparison:
+            return compare.run_score()
         if args.kiids and (args.unseen or args.factsheets):
             parser.error("--kiids can't be combined with --unseen or --factsheets (there are no unseen KIIDs)")
         if args.kiids:
