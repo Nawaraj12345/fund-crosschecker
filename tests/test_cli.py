@@ -1,5 +1,7 @@
 """Tests for the command line's extraction loop (no PDFs or API key needed)."""
 
+import sys
+
 import pytest
 
 import fundcrosschecker.__main__ as cli
@@ -79,3 +81,26 @@ def test_a_file_with_the_wrong_name_is_skipped(folder, capsys):
     odd.write_bytes(b"%PDF")
     assert cli.extract_all([odd], "kid", lambda pages, sha: fields()) == 1
     assert "name isn't like F16_kid.pdf" in capsys.readouterr().err
+
+
+def test_kiids_and_kids_are_told_apart(folder, capsys):
+    (folder / "F01_kiid.pdf").write_bytes(b"%PDF fake kiid")
+    seen = []
+    assert cli.extract_all([folder], "kiid", lambda pages, sha: seen.append(sha) or fields()) == 0
+    assert len(seen) == 1 and "1 KIID(s) written" in capsys.readouterr().out   # not the KID
+    assert (folder.parent / "output" / "kiid" / "F01_kiid.json").exists()
+    assert "F01,kiid,A Fund" in (folder.parent / "output" / "kiid_extracted.csv").read_text()
+    seen.clear()
+    cli.extract_all([folder], "kid", lambda pages, sha: seen.append(sha) or fields())
+    assert len(seen) == 1   # F16_kid.pdf only, not F01_kiid.pdf
+
+
+def test_the_kiid_command_uses_the_kiid_reader(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(cli, "extract_all", lambda paths, doc_type, extract: calls.append((paths, doc_type, extract)) or 0)
+    monkeypatch.setattr(cli.kiid, "extract", lambda pages: ("read as a KIID", pages))
+    monkeypatch.setattr(sys, "argv", ["fundcrosschecker", "kiid", str(tmp_path)])
+    assert cli.main() == 0
+    [(paths, doc_type, extract)] = calls
+    assert (paths, doc_type) == ([tmp_path], "kiid")
+    assert extract(["page"], "sha") == ("read as a KIID", ["page"])

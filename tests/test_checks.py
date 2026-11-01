@@ -373,3 +373,21 @@ def test_a_label_with_no_words_is_never_in_a_quote(value):
     # check_fields stops these earlier ("empty", "no letters or digits"), but the quote check
     # must hold on its own too: "every one of no words is in the quote" would be true.
     assert not value_in_quote("charge_label", value, "Ongoing charges 0.5%")
+
+
+@pytest.mark.parametrize("value, quote, ok", [
+    ("5", "The Fund is rated five", True),     # F02 KIID
+    ("5", "The Fund is rated Five", True),
+    ("4", "The Fund is rated five", False),    # the wrong word
+    ("5", "The Fund is rated fivefold", False),
+    ("7", "seventy", False),
+])
+def test_a_risk_score_written_as_a_word(value, quote, ok):
+    fields = {"risk_score": Field(value, 1, quote)}
+    run(fields, [quote])
+    assert (fields["risk_score"].value == value) == ok
+
+
+def test_number_words_count_only_for_the_risk_score():
+    assert not value_in_quote("ongoing_charge_pct", "1", "one per cent")
+    assert not value_in_quote("transaction_cost_pct", "2", "two")

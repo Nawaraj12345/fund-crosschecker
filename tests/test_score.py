@@ -365,3 +365,38 @@ def test_a_duplicate_in_the_answer_key_blocks_recording(project, capsys):
     run(extracted, key, results, project)
     assert "the answer key has a document twice" in capsys.readouterr().out
     assert not results.exists()
+
+
+def test_kiids_are_scored_against_kiid_rows_only():
+    kiid_row = key_row("F01", isin="GB00B3TYHH97")
+    kiid_row["doc_type"] = "kiid"
+    extracted = key_row("F01", isin="GB00B3TYHH97")
+    results, not_extracted, problems = score([extracted], [key_row("F16"), kiid_row], doc_type="kiid")
+    assert {r.fund_id for r in results} == {"F01"} and all(r.kind == "correct" for r in results)
+    assert not_extracted == [] and problems == []
+    # and the KID score ignores the KIID row
+    results, not_extracted, _ = score([key_row("F16")], [key_row("F16"), kiid_row])
+    assert {r.fund_id for r in results} == {"F16"} and not_extracted == []
+
+
+def test_score_kiids_uses_its_own_files(monkeypatch):
+    calls = []
+    monkeypatch.setattr(score_module, "run", lambda **kwargs: calls.append(kwargs) or 0)
+    monkeypatch.setattr(sys, "argv", ["fundcrosschecker", "score", "--kiids"])
+    assert cli.main() == 0
+    assert calls == [{"extracted_path": score_module.EXTRACTED_KIIDS, "results_path": score_module.KIID_RESULTS,
+                      "doc_type": "kiid"}]
+    assert score_module.EXTRACTED_KIIDS.name == "kiid_extracted.csv"
+    assert score_module.KIID_RESULTS.name == "kiid_scores.csv"
+    assert len({score_module.RESULTS, score_module.UNSEEN_RESULTS, score_module.FACTSHEET_RESULTS,
+                score_module.UNSEEN_FACTSHEET_RESULTS, score_module.KIID_RESULTS}) == 5
+
+
+@pytest.mark.parametrize("extra", [["--unseen"], ["--factsheets"], ["--unseen", "--factsheets"]])
+def test_score_kiids_cant_be_combined(monkeypatch, capsys, extra):
+    monkeypatch.setattr(score_module, "run", lambda **kwargs: pytest.fail("shouldn't score"))
+    monkeypatch.setattr(sys, "argv", ["fundcrosschecker", "score", "--kiids", *extra])
+    with pytest.raises(SystemExit) as stopped:
+        cli.main()
+    assert stopped.value.code == 2
+    assert "--kiids can't be combined" in capsys.readouterr().err

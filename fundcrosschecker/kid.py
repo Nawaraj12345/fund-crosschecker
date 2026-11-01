@@ -441,23 +441,29 @@ DATE_WORDS = (r"Date of (?:document )?production(?: of (?:this document|the KID)
 # 08/06/2026, 01-04-2025 or 05.10.2026 (two-digit day and month, one kind of separator), or
 # 8 June 2026. Up to 40 characters without digits can come in between (F27's columns put
 # "found at http://fgen.com" there), and one footnote digit can follow the year (F14: "31 July 20261").
-DOC_DATE = (rf"(?:{DATE_WORDS})\D{{0,40}}?(?<!\d)(?:(\d{{2}})([/.-])(\d{{2}})\2(\d{{4}})"
-            rf"|(\d{{1,2}}) ({'|'.join(MONTHS)}) (\d{{4}}))\d?(?!\d)")
+# The KIID reader (kiid.py) puts its own words in front of the same date pattern.
+DATE_AFTER_WORDS = (rf"\D{{0,40}}?(?<!\d)(?:(\d{{2}})([/.-])(\d{{2}})\2(\d{{4}})"
+                    rf"|(\d{{1,2}}) ({'|'.join(MONTHS)}) (\d{{4}}))\d?(?!\d)")
+DOC_DATE = rf"(?:{DATE_WORDS}){DATE_AFTER_WORDS}"
 
 
 def _doc_date(page1: str, notes: list[str]) -> Field:
     """The KID's own date, from page 1, e.g. "Date of Production: 08/06/2026"."""
-    found = _search(DOC_DATE, [page1])
+    return _date_field(_search(DOC_DATE, [page1]), notes)
+
+
+def _date_field(found: tuple[int, re.Match] | None, notes: list[str]) -> Field:
+    """A match of some date words followed by DATE_AFTER_WORDS, as a YYYY-MM-DD field."""
     if not found:
         return Field(NOT_FOUND)
-    _, match = found
+    page_no, match = found
     if match.group(1):
         day, month, year = int(match.group(1)), int(match.group(3)), int(match.group(4))
     else:
         month_names = [name.casefold() for name in MONTHS]
         day, month, year = int(match.group(5)), month_names.index(match.group(6).casefold()) + 1, int(match.group(7))
     try:
-        return Field(date(year, month, day).isoformat(), 1, match.group(0))
+        return Field(date(year, month, day).isoformat(), page_no, match.group(0))
     except ValueError:
         notes.append(f"Not a real date: {match.group(0)}")
         return Field(NOT_FOUND)

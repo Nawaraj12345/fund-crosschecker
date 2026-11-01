@@ -12,7 +12,7 @@ It's for a fund selector at a wealth manager: someone who passes a trust's cost 
 
 ## What it does today
 
-The project is in Sprint 2. It reads trust KIDs with rules, and factsheets with Claude.
+The project is in Sprint 2. It reads trust KIDs and ordinary funds' KIIDs with rules, and factsheets with Claude.
 
 **Trust KIDs:**
 
@@ -20,6 +20,8 @@ The project is in Sprint 2. It reads trust KIDs with rules, and factsheets with 
 - **Checks every value before saving it.** It checks the format (ISIN check digit, percentages from 0 to 5, risk score 1 to 7, a real date, no empty text) and that the quoted text really is on that page and contains the value. A number has to stand on its own in its quote: "1" doesn't count inside "1.5%", "£1,000", "-1%" or a footnote mark such as "SRRI1", and a date doesn't count inside a longer one (8 June isn't in "18 June"). A value that fails either check becomes `not_found`, with the reason in the notes, so the tool never reports a number it can't point to in the document.
 - **Reads cost tables**, including the awkward layouts: rows where the description column is mixed in, labels split over the lines of their cell, a space before the % sign, tables printed without their "Composition of costs" heading, figures given as N/A or only as a £ amount. When the KID states a charge somewhere else, such as in its text, the notes record it with its page.
 - **Scores itself** against an answer key built from the PDFs (see [The data](#the-data)). **The honest figure: on 10 trusts it had never seen** (its first run on them, on 1 November 2026, after their answer key was committed and with no rule changes) it scored **71 of 100 correct, 1 wrong, 28 missed, 0 made up**. Even that flatters it: 25 of the 71 are values the KID doesn't print, rightly reported as `not_found`, so of the 75 values these KIDs do print it found 46 (61%), against 96 of 110 (87%) on the 14 KIDs the rules were written from. The 28 missed were mostly wordings the rules hadn't met (9 dates, 5 names, 4 share classes, 7 cost figures with 2 of their labels) and 1 risk score; the wrong one was a name read with its label ("Name Seraphim Space Investment Trust plc"). The rules were then extended to those wordings, so all 24 trust KIDs now count as development documents: **140 of 140** on the first 14 and **97 of 100** on the other 10, 0 wrong, 0 made up. The 3 left are a risk score shown only in the graphic, and the name and share class of a KID whose two text columns run together. Those are development scores, not evidence about new trusts; that would need a fresh unseen set.
+
+**Ordinary funds' KIIDs (the controls):** the 5 open-ended funds' KIIDs follow one standard layout, so they're read with rules too (`fundcrosschecker/kiid.py`), sharing the ISIN rule, the date pattern and every check with the trust KIDs. A KIID has no transaction or total cost, so those two are always `not_found`. Its risk score is read from the text, whether it's written as a digit ("rated 4"), as a word ("rated five") or only as the larger number the text layer lifts out of the 1–7 scale. Score: **50 of 50 correct, 0 made up**. That's a development score: the rules were written from these five and there are no unseen KIIDs, so it shows the rules fit these documents, not that they'd work on others.
 
 **Factsheets:** factsheets come in a different layout from every provider, so instead of rules each factsheet's text goes to Claude (`claude-opus-5-5`), which answers each of the same 10 fields with the value, the page and the exact words it read it from. Every answer then goes through the same format checks and quote check as the KIDs, so Claude can miss a figure but can't put one in the output that the PDF doesn't show. Answers are cached by the PDF's hash, the model and the prompt, so re-running costs nothing and gives the same answers. On the 19 development factsheets (16 providers) the latest prompt scores **184 of 190 values correct, 1 wrong, 0 made up** (the first prompt scored 167, with 7 wrong). The checks used to remove 11 answers for reasons that don't matter in factsheet text (footnote numbers stuck to labels, labels in brackets, dates such as 30-Sep-2026 or with the spaces lost, a figure split as "1 .03%"). Now they allow for those, which brought back 9 correct values. Of the other two, one is still rightly removed (its quote doesn't hold the whole label), and one now counts as wrong: Claude's label for one factsheet leaves out the "(fixed)" it prints. The other 4 `not_found` are risk scores shown only as a shaded box. An earlier prompt also showed the checks at work: they stopped a share class Claude gave for a factsheet that doesn't name one, with a quote that didn't contain it.
 
@@ -34,6 +36,9 @@ KID (PDF)  ->  text, page by page (pdfplumber)
            ->  output/kid/<fund>_kid.json   (each value with its page and quote)
                output/kid_extracted.csv      (same columns as the answer key)
            ->  scorer (fundcrosschecker/score.py)  ->  results/kid_scores.csv
+
+KIID (PDF)  ->  the same steps with the KIID rules (fundcrosschecker/kiid.py)
+            ->  output/kiid/, output/kiid_extracted.csv  ->  results/kiid_scores.csv
 
 Factsheet (PDF)  ->  text, page by page (pdfplumber)
                  ->  Claude answers each field with value, page and quote (fundcrosschecker/factsheet.py),
@@ -63,6 +68,8 @@ Run these from the project folder:
 .venv/bin/python -m fundcrosschecker score              # compare with the answer key
 .venv/bin/python -m fundcrosschecker kid pdfs/unseen/   # the unseen trusts
 .venv/bin/python -m fundcrosschecker score --unseen     # scored apart from the development score
+.venv/bin/python -m fundcrosschecker kiid pdfs/         # every *_kiid.pdf (the ordinary funds)
+.venv/bin/python -m fundcrosschecker score --kiids      # compare with the KIID rows
 .venv/bin/python -m fundcrosschecker factsheet pdfs/    # every *_factsheet.pdf, read by Claude
 .venv/bin/python -m fundcrosschecker score --factsheets # compare with the factsheet rows
 .venv/bin/python -m fundcrosschecker factsheet pdfs/unseen/          # the unseen trusts' factsheets
@@ -70,9 +77,9 @@ Run these from the project folder:
 .venv/bin/python -m pytest                              # run the tests
 ```
 
-The tests don't need the PDFs or an API key: the one test that reads a real KID skips itself when `pdfs/` isn't there, and the factsheet tests use a stand-in for Claude.
+The tests don't need the PDFs or an API key: the tests that read real PDFs skip themselves when the PDFs aren't there, and the factsheet tests use a stand-in for Claude.
 
-The `factsheet` command needs your own Anthropic API key (create one at https://platform.claude.com/, then run `export ANTHROPIC_API_KEY=...` in the terminal you run it from, or add that line to `~/.zshrc` so every new terminal has it). A full run of all 19 factsheets costs about $0.90 (measured twice on 31 October 2026; each request prints its tokens and cost); after that the cached answers are used, at no cost.
+The `factsheet` command needs your own Anthropic API key (create one at https://platform.claude.com/, then run `export ANTHROPIC_API_KEY=...` in the terminal you run it from). A full run of all 19 factsheets costs about $0.90 (measured twice on 31 October 2026; each request prints its tokens and cost); after that the cached answers are used, at no cost.
 
 ## The data
 
@@ -86,8 +93,8 @@ Every answer key value was checked against its PDF's text by script, and every r
 ## Project layout
 
 ```
-fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, factsheet.py, checks.py, score.py, output.py, common.py
-tests/             unit tests; the extractor's and checks' tests use real wording from the KIDs
+fundcrosschecker/  the code: __main__.py (the commands), pdftext.py, kid.py, kiid.py, factsheet.py, checks.py, score.py, output.py, common.py
+tests/             unit tests; the extractors' and checks' tests use real wording from the KIDs and KIIDs
 spikes/            the PDF library comparison
 data/              sources, answer key and their rules
 results/           score history (counts only), committed; the unseen trusts' in their own file
@@ -99,6 +106,6 @@ pdfs/              the downloaded PDFs, never committed
 
 | When | What |
 |---|---|
-| Sprint 2 (to 29 Nov 2026) | Done: the test on 10 trusts the tool hadn't seen (71 of 100), then the checks' known gaps, checks that allow for factsheet text, and the KID wordings that test showed up. Next: the unseen trusts' factsheets (answer key first, then one run) |
-| Sprint 3 (30 Nov – 13 Dec 2026) | The ordinary funds' KIIDs (the controls), then the comparison: match, mismatch, or can't compare, with the likely reason |
+| Sprint 2 (to 29 Nov 2026) | Done: the test on 10 trusts the tool hadn't seen (71 of 100), then the checks' known gaps, checks that allow for factsheet text, and the KID wordings that test showed up. Next: the unseen trusts' factsheets (their answer key is committed; the one run is still to do) |
+| Sprint 3 (30 Nov – 13 Dec 2026) | Done early: the ordinary funds' KIIDs (the controls, 50 of 50). Next: the comparison: match, mismatch, or can't compare, with the likely reason |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |

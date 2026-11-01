@@ -1,4 +1,4 @@
-"""Command line: extract the figures from trust KIDs and fund factsheets, and score them.
+"""Command line: extract the figures from trust KIDs, fund KIIDs and factsheets, and score them.
 
     .venv/bin/python -m fundcrosschecker kid pdfs/F16_kid.pdf
     .venv/bin/python -m fundcrosschecker kid pdfs/          (every *_kid.pdf in the folder)
@@ -9,10 +9,13 @@
     .venv/bin/python -m fundcrosschecker score --factsheets
     .venv/bin/python -m fundcrosschecker factsheet pdfs/unseen/
     .venv/bin/python -m fundcrosschecker score --unseen --factsheets   (the unseen trusts' factsheets)
+    .venv/bin/python -m fundcrosschecker kiid pdfs/         (every *_kiid.pdf: the ordinary funds)
+    .venv/bin/python -m fundcrosschecker score --kiids
 
 Run these from the project folder, which is where Python finds the package.
 `kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
-project's output/ folder; `factsheet` writes output/factsheet/ and
+project's output/ folder; `kiid` writes output/kiid/ and output/kiid_extracted.csv
+the same way; `factsheet` writes output/factsheet/ and
 output/factsheet_extracted.csv, and caches Claude's answers in output/llm/.
 Each CSV holds only the documents from the latest run (a run that reads none
 leaves it as it was); JSON files from earlier runs are left as they are.
@@ -26,11 +29,11 @@ import re
 import sys
 from pathlib import Path
 
-from . import factsheet, kid, output, score
+from . import factsheet, kid, kiid, output, score
 from .pdftext import read_pages
 
 OUTPUT = Path(__file__).resolve().parent.parent / "output"
-LABELS = {"kid": "KID", "factsheet": "factsheet"}  # how each document type is named in messages
+LABELS = {"kid": "KID", "kiid": "KIID", "factsheet": "factsheet"}  # how each document type is named in messages
 
 
 def pdf_files(paths: list[Path], doc_type: str) -> tuple[list[Path], int]:
@@ -58,6 +61,8 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     kid_cmd = sub.add_parser("kid", help="extract figures from trust KIDs")
     kid_cmd.add_argument("paths", nargs="+", type=Path, help="KID PDFs, or folders of them")
+    kiid_cmd = sub.add_parser("kiid", help="extract figures from ordinary funds' KIIDs")
+    kiid_cmd.add_argument("paths", nargs="+", type=Path, help="KIID PDFs, or folders of them")
     factsheet_cmd = sub.add_parser("factsheet", help="extract figures from factsheets with Claude")
     factsheet_cmd.add_argument("paths", nargs="+", type=Path, help="factsheet PDFs, or folders of them")
     score_cmd = sub.add_parser("score", help="compare the extractor's output with the answer key")
@@ -65,9 +70,16 @@ def main() -> int:
                            help="use the unseen trusts' answer key (data/unseen/) and score history")
     score_cmd.add_argument("--factsheets", action="store_true",
                            help="score output/factsheet_extracted.csv instead of the KIDs")
+    score_cmd.add_argument("--kiids", action="store_true",
+                           help="score output/kiid_extracted.csv instead of the KIDs")
     args = parser.parse_args()
 
     if args.command == "score":
+        if args.kiids and (args.unseen or args.factsheets):
+            parser.error("--kiids can't be combined with --unseen or --factsheets (there are no unseen KIIDs)")
+        if args.kiids:
+            return score.run(extracted_path=score.EXTRACTED_KIIDS, results_path=score.KIID_RESULTS,
+                             doc_type="kiid")
         if args.unseen and args.factsheets:
             return score.run(extracted_path=score.EXTRACTED_FACTSHEETS, key_path=score.UNSEEN_KEY,
                              results_path=score.UNSEEN_FACTSHEET_RESULTS, inputs=score.UNSEEN_INPUTS,
@@ -82,6 +94,8 @@ def main() -> int:
 
     if args.command == "kid":
         return extract_all(args.paths, "kid", lambda pages, sha256: kid.extract(pages))
+    if args.command == "kiid":
+        return extract_all(args.paths, "kiid", lambda pages, sha256: kiid.extract(pages))
 
     import anthropic  # only the factsheet command needs it
 

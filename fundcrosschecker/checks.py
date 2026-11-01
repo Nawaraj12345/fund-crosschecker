@@ -12,6 +12,8 @@ from .common import NOT_FOUND, Field, isin_is_valid, normalise
 
 PERCENT_FIELDS = ("ongoing_charge_pct", "transaction_cost_pct", "total_cost_pct")
 NUMBER_FIELDS = PERCENT_FIELDS + ("risk_score",)
+# A risk score written as a word.
+RISK_WORDS = {"1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six", "7": "seven"}
 RISK_METHODS = {"SRI", "SRRI", "other"}
 # How each named risk indicator can appear in a quote: its full name, or its short form in capitals.
 RISK_NAMES = {
@@ -105,6 +107,8 @@ def value_in_quote(name: str, value: str, quote: str) -> bool:
         # footnote mark ("1" in "SRRI1 4"), unless a % follows it: then it's a figure in
         # text that lost its spaces ("OngoingCharges0.73%"). A figure the text layer splits
         # ("1 .03%", F14 factsheet) is joined up first.
+        if name == "risk_score" and value in RISK_WORDS and re.search(rf"\b{RISK_WORDS[value]}\b", quote, re.IGNORECASE):
+            return True  # a KIID may write it as a word: "The Fund is rated five" (F02)
         joined = re.sub(r"(?<=\d) +(?=\.\d)", "", quote)
         number = re.escape(value)
         after_word = rf"(?<=[^\W\d_])(?={number} ?%)"

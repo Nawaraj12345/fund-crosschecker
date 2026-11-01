@@ -1,4 +1,4 @@
-"""Score the KID and factsheet extractors against the answer key (Stories 2.2 and 2.1).
+"""Score the KID, KIID and factsheet extractors against the answer key (Stories 2.2, 2.3 and 2.1).
 
 Every scored value is one of:
   correct
@@ -26,6 +26,10 @@ the cached answers in output/llm/ (asking Claude again can give other answers).
 `score --unseen --factsheets` scores the unseen trusts' factsheets against the
 factsheet rows of data/unseen/answer_key.csv, recording in
 results/unseen_factsheet_scores.csv; again, the first recorded run is the honest one.
+
+`score --kiids` scores output/kiid_extracted.csv against the answer key's kiid
+rows (the five ordinary funds, Story 2.3), recording in results/kiid_scores.csv.
+The rules were written from those five, so it's a development score.
 """
 
 import csv
@@ -47,7 +51,9 @@ UNSEEN_RESULTS = PROJECT / "results" / "unseen_kid_scores.csv"
 EXTRACTED_FACTSHEETS = PROJECT / "output" / "factsheet_extracted.csv"
 FACTSHEET_RESULTS = PROJECT / "results" / "factsheet_scores.csv"
 UNSEEN_FACTSHEET_RESULTS = PROJECT / "results" / "unseen_factsheet_scores.csv"
-LABELS = {"kid": "KID", "factsheet": "factsheet"}
+EXTRACTED_KIIDS = PROJECT / "output" / "kiid_extracted.csv"
+KIID_RESULTS = PROJECT / "results" / "kiid_scores.csv"
+LABELS = {"kid": "KID", "kiid": "KIID", "factsheet": "factsheet"}
 
 SCORED_FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",
                  "transaction_cost_pct", "total_cost_pct", "risk_score", "risk_method", "doc_date"]
