@@ -22,6 +22,10 @@ is the honest figure; any run after the rules change is a development score agai
 key's factsheet rows, recording in results/factsheet_scores.csv. Claude reads
 the factsheets, so a recorded row is reproducible from its commit together with
 the cached answers in output/llm/ (asking Claude again can give other answers).
+
+`score --unseen --factsheets` scores the unseen trusts' factsheets against the
+factsheet rows of data/unseen/answer_key.csv, recording in
+results/unseen_factsheet_scores.csv; again, the first recorded run is the honest one.
 """
 
 import csv
@@ -42,6 +46,7 @@ UNSEEN_KEY = PROJECT / "data" / "unseen" / "answer_key.csv"
 UNSEEN_RESULTS = PROJECT / "results" / "unseen_kid_scores.csv"
 EXTRACTED_FACTSHEETS = PROJECT / "output" / "factsheet_extracted.csv"
 FACTSHEET_RESULTS = PROJECT / "results" / "factsheet_scores.csv"
+UNSEEN_FACTSHEET_RESULTS = PROJECT / "results" / "unseen_factsheet_scores.csv"
 LABELS = {"kid": "KID", "factsheet": "factsheet"}
 
 SCORED_FIELDS = ["fund_name", "isin", "share_class", "ongoing_charge_pct", "charge_label",

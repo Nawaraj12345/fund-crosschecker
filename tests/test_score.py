@@ -293,21 +293,38 @@ def test_score_unseen_uses_the_unseen_files(monkeypatch):
                                                     "inputs": UNSEEN_INPUTS, "pdf_folder": "pdfs/unseen/"}),
                            (["score", "--factsheets"], {"extracted_path": score_module.EXTRACTED_FACTSHEETS,
                                                         "results_path": score_module.FACTSHEET_RESULTS,
-                                                        "doc_type": "factsheet"})):
+                                                        "doc_type": "factsheet"}),
+                           (["score", "--unseen", "--factsheets"],
+                            {"extracted_path": score_module.EXTRACTED_FACTSHEETS, "key_path": score_module.UNSEEN_KEY,
+                             "results_path": score_module.UNSEEN_FACTSHEET_RESULTS, "inputs": UNSEEN_INPUTS,
+                             "pdf_folder": "pdfs/unseen/", "doc_type": "factsheet"}),
+                           (["score", "--factsheets", "--unseen"],   # either order
+                            {"extracted_path": score_module.EXTRACTED_FACTSHEETS, "key_path": score_module.UNSEEN_KEY,
+                             "results_path": score_module.UNSEEN_FACTSHEET_RESULTS, "inputs": UNSEEN_INPUTS,
+                             "pdf_folder": "pdfs/unseen/", "doc_type": "factsheet"})):
         monkeypatch.setattr(sys, "argv", ["fundcrosschecker", *argv])
         assert cli.main() == 0
         assert calls.pop() == expected
     assert score_module.UNSEEN_KEY.parts[-3:] == ("data", "unseen", "answer_key.csv")
     assert score_module.UNSEEN_RESULTS.name == "unseen_kid_scores.csv"
+    assert score_module.UNSEEN_FACTSHEET_RESULTS.name == "unseen_factsheet_scores.csv"
     assert score_module.UNSEEN_RESULTS != score_module.RESULTS
-    assert len({score_module.RESULTS, score_module.UNSEEN_RESULTS, score_module.FACTSHEET_RESULTS}) == 3
+    assert len({score_module.RESULTS, score_module.UNSEEN_RESULTS, score_module.FACTSHEET_RESULTS,
+                score_module.UNSEEN_FACTSHEET_RESULTS}) == 4
 
 
-def test_unseen_and_factsheets_cant_be_combined(monkeypatch):
-    # There's no unseen factsheet answer key yet, so asking for both is an error, not a silent choice.
-    monkeypatch.setattr(sys, "argv", ["fundcrosschecker", "score", "--unseen", "--factsheets"])
-    with pytest.raises(SystemExit):
-        cli.main()
+def test_unseen_factsheet_score_uses_only_the_factsheet_rows(project, capsys):
+    # The unseen key holds KID and factsheet rows; scoring factsheets must ignore the KID rows.
+    (project / "data" / "unseen").mkdir()
+    extracted, key, results = scoring_files(project / "data" / "unseen")
+    header, row = key.read_text(encoding="utf-8").splitlines()
+    kid_row = row.replace("not_found", "Some KID value", 1)       # differs, so using it would show as wrong
+    factsheet_row = row.replace(",kid,", ",factsheet,", 1)
+    key.write_text("\n".join([header, kid_row, factsheet_row]) + "\n", encoding="utf-8")
+    run(extracted, key, results, project, inputs=UNSEEN_INPUTS, pdf_folder="pdfs/unseen/", doc_type="factsheet")
+    out = capsys.readouterr().out
+    assert "more than once" not in out   # the KID row with the same fund_id isn't a repeat
+    assert "10 of 10 values correct (wrong 0, missed 0, made up 0)" in out
 
 
 # --- duplicates and empty runs (found 2026-10-31) --------------------------------------

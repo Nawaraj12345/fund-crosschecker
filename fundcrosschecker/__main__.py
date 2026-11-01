@@ -7,6 +7,8 @@
     .venv/bin/python -m fundcrosschecker score --unseen     (the unseen trusts, scored separately)
     .venv/bin/python -m fundcrosschecker factsheet pdfs/    (every *_factsheet.pdf, read by Claude)
     .venv/bin/python -m fundcrosschecker score --factsheets
+    .venv/bin/python -m fundcrosschecker factsheet pdfs/unseen/
+    .venv/bin/python -m fundcrosschecker score --unseen --factsheets   (the unseen trusts' factsheets)
 
 Run these from the project folder, which is where Python finds the package.
 `kid` writes output/kid/<fund_id>_kid.json and output/kid_extracted.csv in the
@@ -59,14 +61,17 @@ def main() -> int:
     factsheet_cmd = sub.add_parser("factsheet", help="extract figures from factsheets with Claude")
     factsheet_cmd.add_argument("paths", nargs="+", type=Path, help="factsheet PDFs, or folders of them")
     score_cmd = sub.add_parser("score", help="compare the extractor's output with the answer key")
-    which = score_cmd.add_mutually_exclusive_group()
-    which.add_argument("--unseen", action="store_true",
-                       help="use the unseen trusts' answer key (data/unseen/) and score history")
-    which.add_argument("--factsheets", action="store_true",
-                       help="score output/factsheet_extracted.csv instead of the KIDs")
+    score_cmd.add_argument("--unseen", action="store_true",
+                           help="use the unseen trusts' answer key (data/unseen/) and score history")
+    score_cmd.add_argument("--factsheets", action="store_true",
+                           help="score output/factsheet_extracted.csv instead of the KIDs")
     args = parser.parse_args()
 
     if args.command == "score":
+        if args.unseen and args.factsheets:
+            return score.run(extracted_path=score.EXTRACTED_FACTSHEETS, key_path=score.UNSEEN_KEY,
+                             results_path=score.UNSEEN_FACTSHEET_RESULTS, inputs=score.UNSEEN_INPUTS,
+                             pdf_folder="pdfs/unseen/", doc_type="factsheet")
         if args.unseen:
             return score.run(key_path=score.UNSEEN_KEY, results_path=score.UNSEEN_RESULTS,
                              inputs=score.UNSEEN_INPUTS, pdf_folder="pdfs/unseen/")

@@ -65,6 +65,8 @@ Run these from the project folder:
 .venv/bin/python -m fundcrosschecker score --unseen     # scored apart from the development score
 .venv/bin/python -m fundcrosschecker factsheet pdfs/    # every *_factsheet.pdf, read by Claude
 .venv/bin/python -m fundcrosschecker score --factsheets # compare with the factsheet rows
+.venv/bin/python -m fundcrosschecker factsheet pdfs/unseen/          # the unseen trusts' factsheets
+.venv/bin/python -m fundcrosschecker score --unseen --factsheets     # scored apart, in their own file
 .venv/bin/python -m pytest                              # run the tests
 ```
 
