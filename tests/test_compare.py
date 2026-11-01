@@ -174,11 +174,11 @@ def test_compare_writes_every_value_with_its_page_and_quote(output, capsys):
         ("F04", "ongoing_charge_pct", "mismatch"), ("F04", "risk_score", "cant_compare"),
         ("F10", "ongoing_charge_pct", "cant_compare"), ("F10", "risk_score", "cant_compare")]
     assert (rows[0]["factsheet_quote"], rows[0]["kid_page"], rows[0]["days_apart"]) == ("factsheet says 1.12", "2", "128")
-    assert rows[2]["reasons"] == "kid_none;kid_text_same" and rows[2]["kid_other_figures"] == "0.73% (page 3)"
+    assert rows[2]["reasons"] == "kid_none;kid_text_same" and rows[2]["kid_other_figures"] == '0.73% (page 3: "was 0.73%")'
     printed = capsys.readouterr().out
     assert "1.12 vs 1.52" in printed and "No reason found in the documents" in printed
     assert "Possible reasons: No reason" not in printed   # nothing to call a possible reason
-    assert "The KID's text gives 0.73% (page 3), the same as the factsheet." in printed
+    assert 'The KID\'s text gives 0.73% (page 3: "was 0.73%"), the same as the factsheet.' in printed
     assert "0 match, 1 mismatch, 1 can't compare, out of 2 funds" in printed
 
 
@@ -345,3 +345,13 @@ def test_score_comparison_cant_be_combined(monkeypatch, capsys, extra):
     with pytest.raises(SystemExit):
         cli.main()
     assert "--comparison can't be combined" in capsys.readouterr().err
+
+
+def test_the_kids_text_figures_in_words():
+    f14 = compare.compare_documents(doc("F14", "1.03"), doc("F14", NOT_FOUND, notes=elsewhere("1.03", "1.10")), "kid")[0]
+    # only the figure that matches is named, with its quote: the other may be another year's
+    assert compare.explain(f14) == ('The KID doesn\'t print one in its cost table. '
+                                    'The KID\'s text gives 1.03% (page 3: "was 1.03%"), the same as the factsheet.')
+    f06 = compare.compare_documents(doc("F06", "0.69"), doc("F06", "0.00", notes=elsewhere("0.77", "0.80")), "kid")[0]
+    assert compare.explain(f06) == ('Possible reasons: The KID\'s cost table shows 0%. The KID\'s text gives '
+                                    '0.77% (page 3: "was 0.77%"); 0.80% (page 3: "was 0.80%").')

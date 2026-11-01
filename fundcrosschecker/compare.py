@@ -204,7 +204,7 @@ def write_comparison(comparisons: list[Comparison], path: Path = COMPARISON) -> 
                 "kid_page": kid_page or "", "kid_quote": kid_quote or "",
                 "factsheet_date": c.factsheet_date, "kid_date": c.kid_date,
                 "days_apart": "" if c.days_apart is None else c.days_apart,
-                "kid_other_figures": "; ".join(f"{figure}% (page {page})" for figure, page, _ in c.other_figures),
+                "kid_other_figures": "; ".join(_figure_with_source(other) for other in c.other_figures),
             })
 
 
@@ -224,12 +224,21 @@ def explain(c: Comparison) -> str:
         "scale_not_stated": "Same score, but the risk scale isn't named in both documents.",
         "different_scales": "The two documents use different risk scales.",
     }
-    figures = ", ".join(f"{figure}% (page {page})" for figure, page, _ in c.other_figures)
-    words["kid_text_same"] = (f"The {kid}'s text gives {figures}, the same as the factsheet." if len(c.other_figures) == 1
-                              else f"The {kid}'s text gives {figures}, one of them the same as the factsheet.")
-    words["kid_text_other"] = f"The {kid}'s text gives {figures}."
+    # When the KID's text gives the factsheet's figure, only that one is named: the others may
+    # belong to another year or class, and their quotes can mislead where the text layer runs
+    # table columns together (F14's 1.10% is last year's). They're all in comparison.csv.
+    factsheet_figure = to_number(c.factsheet_value) if c.factsheet_value != NOT_FOUND else None
+    same = [other for other in c.other_figures if factsheet_figure is not None and float(other[0]) == factsheet_figure]
+    if same:
+        words["kid_text_same"] = f"The {kid}'s text gives {_figure_with_source(same[0])}, the same as the factsheet."
+    words["kid_text_other"] = f"The {kid}'s text gives {'; '.join(_figure_with_source(o) for o in c.other_figures)}."
     text = " ".join(words[reason] for reason in c.reasons)
     return f"Possible reasons: {text}" if c.verdict == "mismatch" and c.reasons != ["no_reason"] else text
+
+
+def _figure_with_source(other: tuple[str, int, str]) -> str:
+    figure, page, quote = other
+    return f'{figure}% (page {page}: "{quote}")'
 
 
 def print_report(comparisons: list[Comparison]) -> None:
