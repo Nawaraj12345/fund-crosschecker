@@ -199,3 +199,13 @@ run_date,git_commit,field,correct,wrong,missed,made_up
 2026-11-01,eeec55d,risk_score,14,0,0,0
 2026-11-01,eeec55d,risk_method,14,0,0,0
 2026-11-01,eeec55d,doc_date,14,0,0,0
+2026-11-01,a362802,fund_name,14,0,0,0
+2026-11-01,a362802,isin,14,0,0,0
+2026-11-01,a362802,share_class,14,0,0,0
+2026-11-01,a362802,ongoing_charge_pct,14,0,0,0
+2026-11-01,a362802,charge_label,14,0,0,0
+2026-11-01,a362802,transaction_cost_pct,14,0,0,0
+2026-11-01,a362802,total_cost_pct,14,0,0,0
+2026-11-01,a362802,risk_score,14,0,0,0
+2026-11-01,a362802,risk_method,14,0,0,0
+2026-11-01,a362802,doc_date,14,0,0,0
