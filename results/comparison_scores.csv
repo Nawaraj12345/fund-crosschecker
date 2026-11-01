@@ -1,0 +1,2 @@
+run_date,git_commit,rows,correct,false_alarm,missed_mismatch,other_wrong,reasons_right
+2026-11-01,594886c,38,35,0,0,3,35
