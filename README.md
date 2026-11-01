@@ -2,7 +2,7 @@
 
 **Does a fund's factsheet give the same figures as its own KID?**
 
-Fund CrossChecker checks whether a UK investment trust's **factsheet** and its **Key Information Document (KID)** give the same figures, starting with the ongoing charge and the risk score. It reads both documents, compares them, and for each figure says match, mismatch or can't compare. Where they differ, it shows both numbers, the page and words each one came from, and the likely reason, such as a KID whose cost table shows 0% while its own text gives the factsheet's figure. Ordinary funds' factsheets and KIIDs are checked the same way, as controls.
+Fund CrossChecker checks whether a UK investment trust's **factsheet** and its **Key Information Document (KID)** give the same figures, starting with the ongoing charge and the risk score. It reads both documents, compares them, and for each figure says match, mismatch or can't compare. Where they differ, it shows both numbers, the page and words each one came from, and the likely reason, such as a KID whose cost table shows 0%, or a KID more than a year older than the factsheet. Ordinary funds' factsheets and KIIDs are checked the same way, as controls.
 
 It's for a fund selector at a wealth manager: someone who passes a trust's cost on to clients and needs to know which figure to trust.
 
