@@ -47,7 +47,7 @@ The trusts for the unseen-trusts test: ten trusts that were never looked at whil
 
 ## comparison_key.csv
 
-The expected result of comparing each fund's factsheet with its KID or KIID (Story 3.1), for F01–F19: one row per fund and compared field (`ongoing_charge_pct`, `risk_score`). Written by hand from `answer_key.csv` and from the figures the KIDs give outside their cost rows (each checked in the PDF), and committed before the comparison code, so the comparison is scored against what the documents say rather than against its own output. F20–F29 get their rows once their factsheets have been read; since their values were looked at while the comparison rules were designed, any score on them is a development score.
+The expected result of comparing each fund's factsheet with its KID or KIID (Story 3.1), for F01–F29: one row per fund and compared field (`ongoing_charge_pct`, `risk_score`). Written by hand from `answer_key.csv` and from the figures the KIDs give outside their cost rows (each checked in the PDF), and committed before the comparison code, so the comparison is scored against what the documents say rather than against its own output. F20–F29's rows were added on 1 November 2026, after their factsheets were read, written the same way and checked by script against `unseen/answer_key.csv` and the rules. Their values were looked at while the comparison rules were designed, and the comparison's output for them had been seen once, by mistake, before the rows were written, so any score on them is a development score.
 
 | Column | What to write |
 |---|---|

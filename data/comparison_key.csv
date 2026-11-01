@@ -37,3 +37,23 @@ F18,ongoing_charge_pct,match,,1.03 on both
 F18,risk_score,cant_compare,factsheet_none,KID 3
 F19,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints N/A; its text gives 0.74 like the factsheet
 F19,risk_score,cant_compare,factsheet_none,KID 4
+F20,ongoing_charge_pct,cant_compare,neither_none,neither prints an ongoing charge: the KID's cost lines are N/A and the factsheet points to the trust's report
+F20,risk_score,cant_compare,factsheet_none,KID 5 (shown only in its scale graphic)
+F21,ongoing_charge_pct,cant_compare,kid_none,factsheet 0.50; the KID's cost lines are N/A and it gives no figure anywhere
+F21,risk_score,cant_compare,factsheet_none,KID 4
+F22,ongoing_charge_pct,mismatch,kid_table_zero,0.75 vs 0.00; the KID gives no other figure; 189 days apart
+F22,risk_score,cant_compare,factsheet_none,KID 5
+F23,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints n/a; its text gives 1.05 like the factsheet
+F23,risk_score,cant_compare,factsheet_none,KID 5
+F24,ongoing_charge_pct,mismatch,no_reason,1.36 (12 months to 30 Jun 2026) vs 1.79 (12 months to 31 Dec 2025); 116 days apart
+F24,risk_score,cant_compare,factsheet_none,KID 6
+F25,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints n/a; its text gives 0.35 like the factsheet
+F25,risk_score,match,,4 on both (the factsheet shows it only on its scale graphic); both name the summary risk indicator
+F26,ongoing_charge_pct,mismatch,kid_text_other,"0.68 vs 0.73 (year to 31 Dec 2025, no cost table); the KID also gives 0.59 including the fee waiver; 152 days apart"
+F26,risk_score,cant_compare,factsheet_none,KID 4
+F27,ongoing_charge_pct,cant_compare,factsheet_none,KID 0 (every cost line 0%); the factsheet prints no charge
+F27,risk_score,cant_compare,factsheet_none,KID 4
+F28,ongoing_charge_pct,mismatch,kid_table_zero;kid_text_same,1.74 vs 0.00; the KID's text gives an OCF of 1.74 for the year to 31 Dec 2025; 173 days apart
+F28,risk_score,cant_compare,factsheet_none,KID 5
+F29,ongoing_charge_pct,cant_compare,neither_none,the KID's cost lines are n.a. and the factsheet prints no charge
+F29,risk_score,cant_compare,factsheet_none,KID 5
