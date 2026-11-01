@@ -4,9 +4,10 @@ It reads KIDs with and without a cost table, and every value goes through the
 quote check and format checks (checks.py), and the notes record any charge the
 KID gives outside its cost row. The name, share class, date and cost wordings
 come from the 24 trust KIDs seen so far (the 14 development ones and, after
-their one honest run, the 10 unseen ones). Not handled yet: a risk score shown
-only in the graphic, product details split over two text columns (F29), and
-the two-ISIN rule. Those fields come out as not_found.
+their one honest run, the 10 unseen ones). A risk score shown only in the
+graphic is read afterwards from its drawing (riskscale.py). Not handled yet:
+product details split over two text columns (F29), and the two-ISIN rule.
+Those fields come out as not_found.
 """
 
 import re

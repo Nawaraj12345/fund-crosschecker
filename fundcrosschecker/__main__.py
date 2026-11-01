@@ -32,11 +32,14 @@ import re
 import sys
 from pathlib import Path
 
-from . import compare, factsheet, kid, kiid, output, score
+from . import compare, factsheet, kid, kiid, output, riskscale, score
 from .pdftext import read_pages
 
 OUTPUT = Path(__file__).resolve().parent.parent / "output"
 LABELS = {"kid": "KID", "kiid": "KIID", "factsheet": "factsheet"}  # how each document type is named in messages
+# Documents whose risk score can come from the scale graphic when the text doesn't give it
+# (riskscale.py). Not KIIDs: all five give theirs in the text.
+GRAPHIC_RISK = ("kid", "factsheet")
 
 
 def pdf_files(paths: list[Path], doc_type: str) -> tuple[list[Path], int]:
@@ -135,6 +138,8 @@ def extract_all(paths: list[Path], doc_type: str, extract) -> int:
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         try:  # one bad PDF shouldn't stop the others
             fields, notes = extract(read_pages(path), sha256)
+            if doc_type in GRAPHIC_RISK:
+                riskscale.fill_from_graphic(fields, notes, path)
         except Exception as error:
             print(f"Couldn't extract {path}: {error}", file=sys.stderr)
             # The SDK raises a plain TypeError, not an API error, when it finds no key.

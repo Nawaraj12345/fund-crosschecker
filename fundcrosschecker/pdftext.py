@@ -1,7 +1,7 @@
 """Read a PDF's text layer.
 
-This is the only module that uses pdfplumber, so the PDF library can be
-swapped in one place.
+This and riskscale.py (which reads the risk scale's drawing) are the only
+modules that use pdfplumber, so the PDF library can be swapped in two places.
 
 pdfplumber reads across the whole page, so on two-column pages (F16's page 1)
 the left and right columns are merged line by line. A value on one line is
