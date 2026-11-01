@@ -312,3 +312,214 @@ def test_very_large_pages_are_read_quickly():
     start = time.time()
     kid.extract(pages)
     assert time.time() - start < 5  # no runaway pattern matching
+
+
+# --- wordings added after the unseen-trusts run (1 Nov 2026), on each KID's real text -----
+
+@pytest.mark.parametrize("line, name, share_class", [
+    ("HgCapital Trust", "HgCapital Trust", NOT_FOUND),                                          # F20: ends "Trust"
+    ("FIDELITY EUROPEAN TRUST PLC.", "FIDELITY EUROPEAN TRUST PLC.", NOT_FOUND),                # F26: full stop
+    ("Product: RTW Biotech Opportunities Ltd", "RTW Biotech Opportunities Ltd", NOT_FOUND),     # F28: "Product:", "Ltd"
+    ("Name Seraphim Space Investment Trust plc", "Seraphim Space Investment Trust plc", NOT_FOUND),  # F24: no colon
+    ("FORESIGHT ENVIRONMENTAL INFRASTRUCTURE LIMITED – ORDINARY SHARES",
+     "FORESIGHT ENVIRONMENTAL INFRASTRUCTURE LIMITED", "ORDINARY SHARES"),                      # F27
+    ("HICL INFRASTRUCTURE PLC ORDINARY SHARES", "HICL INFRASTRUCTURE PLC", "ORDINARY SHARES"),  # F14: no separator
+    ('BlackRock World Mining Trust plc (the "Fund"), Ordinary Shares (the "Shares"), ISIN: GB0005774855, is',
+     "BlackRock World Mining Trust plc", "Ordinary Shares"),                                    # F23: after a bracket
+    ("Namesake Investment Trust plc", "Namesake Investment Trust plc", NOT_FOUND),              # "Name" only as a whole word
+])
+def test_more_product_lines(line, name, share_class):
+    notes = []
+    name_field, share_field = kid._name_and_share_class(f"Purpose\nProduct\n{line}\nISIN: X", notes)
+    assert (name_field.value, share_field.value) == (name, share_class)
+    assert notes == []
+
+
+def test_product_heading_in_capitals():  # F28's real order: the manufacturer line sits before the ISIN
+    page = ("PURPOSE\nPRODUCT\nProduct: RTW Biotech Opportunities Ltd\nPRIIP Manufacturer: RTW Investments, LP\n"
+            "ISIN: GG00BKTRRM22")
+    name, _ = kid._name_and_share_class(page, [])
+    assert name.value == "RTW Biotech Opportunities Ltd"
+
+
+def test_share_class_alone_on_a_following_line():  # F25, with a bracket line in between
+    page = 'Product\nJPMorgan American Investment Trust plc\n("The Company")\nOrdinary Shares\nGB00BKZGVH64'
+    name, share = kid._name_and_share_class(page, [])
+    assert name.value == "JPMorgan American Investment Trust plc"
+    assert (share.value, share.quote) == ("Ordinary Shares", "Ordinary Shares")
+
+
+@pytest.mark.parametrize("page", [
+    "Product\nJPMorgan American Investment Trust plc\nGB00BKZGVH64\nOrdinary Shares",       # after the ISIN line
+    "Product\nJPMorgan American Investment Trust plc\nContact details below\nOrdinary Shares",  # not the next line
+    "Product\nJPMorgan American Investment Trust plc\nOrdinary Shares are traded on the LSE\nGB00BKZGVH64",  # a sentence
+])
+def test_share_class_on_a_later_line_only_when_it_stands_alone_before_the_isin(page):
+    _, share = kid._name_and_share_class(page, [])
+    assert share.value == NOT_FOUND
+
+
+@pytest.mark.parametrize("page, name, share_class", [
+    ("Purpose text\nFinsbury Growth & Income Trust PLC\nGB0007816068\nmore", "Finsbury Growth & Income Trust PLC", NOT_FOUND),  # F09
+    ("The Law Debenture Corporation p.l.c.\nOrdinary shares in The Law Debenture Corporation p.l.c.\nIdentifier: GB0031429219",
+     "The Law Debenture Corporation p.l.c.", "Ordinary shares"),                                                              # F12
+    ("PURPOSE\nHICL INFRASTRUCTURE PLC ORDINARY SHARES\nISIN: GB00BJLP1Y77", "HICL INFRASTRUCTURE PLC", "ORDINARY SHARES"),     # F14
+])
+def test_without_the_heading_the_line_before_the_isin_is_used(page, name, share_class):
+    name_field, share_field = kid._name_and_share_class(page, [])
+    assert (name_field.value, share_field.value) == (name, share_class)
+
+
+@pytest.mark.parametrize("page", [
+    "PURPOSE\nHICL INFRASTRUCTURE PLC\nISIN: GB00BJLP1Y78",   # check digit wrong: not an ISIN
+    "GB00BJLP1Y77\nHICL INFRASTRUCTURE PLC",                  # nothing before the ISIN
+    "PURPOSE\nab\nGB00BJLP1Y77",                              # too short to be a name
+])
+def test_without_the_heading_or_a_line_before_a_real_isin_gives_not_found(page):
+    name, share = kid._name_and_share_class(page, [])
+    assert name.value == NOT_FOUND and share.value == NOT_FOUND
+
+
+def test_two_columns_run_together_give_not_found_and_a_note():  # F29
+    page = ("Purpose Product\nhelp you understand the nature, risks, costs, potential gains and losses of Product Name "
+            "Ordinary Shares (EUR) (the \"product\")\nthis product and to help you compare it with other products.\n"
+            "ISIN GG00B28C2R28")
+    notes = []
+    name, share = kid._name_and_share_class(page, notes)
+    assert name.value == NOT_FOUND and share.value == NOT_FOUND
+    assert notes and notes[0].startswith("Product line not understood")
+
+
+def test_a_sentence_that_ends_like_a_name_is_too_long_to_be_one():
+    line = "This document gives you key information about an investment company that is run as an investment trust"
+    notes = []
+    name, _ = kid._name_and_share_class(f"Product\n{line}", notes)
+    assert name.value == NOT_FOUND and notes
+
+
+def test_a_long_phrase_before_shares_in_isnt_a_share_class():
+    _, share = kid._name_and_share_class("Product\nThis document is about shares in Some Trust plc", [])
+    assert share.value == NOT_FOUND
+
+
+def test_up_to_three_words_before_shares_in_is_a_share_class():
+    name, share = kid._name_and_share_class("Product\nClass A Ordinary Shares in Some Trust plc", [])
+    assert (name.value, share.value) == ("Some Trust plc", "Class A Ordinary Shares")
+
+
+@pytest.mark.parametrize("text, iso", [
+    ("This document is dated 25 May 2026", "2026-05-25"),                                    # F04
+    ("This document is accurate at its production date 30 June 2026", "2026-06-30"),         # F05
+    ("This Key Information Document is accurate as at 11 September 2025", "2025-09-11"),     # F06, F22
+    ("Date of Production 29/12/2017", "2017-12-29"),                                         # F09: no colon
+    ("The version date of this KID is 27 April 2026", "2026-04-27"),                         # F10
+    ("Date of document production : 30 June 2026", "2026-06-30"),                            # F11
+    ("Date of Publication: 01-04-2025", "2025-04-01"),                                       # F12
+    ("Date of production of this document: 20 January 2026", "2026-01-20"),                  # F13, F28
+    ("This key information document was produced on 31 July 20261 WHAT IS", "2026-07-31"),   # F14: footnote 1
+    ("Date of production of the KID: 04/08/2026", "2026-08-04"),                             # F19
+    ("Document published: 23/09/2026", "2026-09-23"),                                        # F21
+    ("This Key Information Document is dated 06/03/2026", "2026-03-06"),                     # F24
+    ("THIS DOCUMENT WAS PRODUCED ON 8 JANUARY 2026", "2026-01-08"),                          # F25: capitals
+    ("Publication Date: 01-05-2026", "2026-05-01"),                                          # F26
+    ("This key information document (KID) was produced on found at http://fgen.com 1 September 2025", "2025-09-01"),  # F27
+    ("Last Updated On 05.10.2026", "2026-10-05"),                                            # F29
+])
+def test_each_kids_date_wording(text, iso):
+    notes = []
+    field = kid._doc_date(f"Product\nSome Trust plc\n{text}\nmore", notes)
+    assert field.value == iso and notes == []
+    assert field.quote in kid.normalise(text)  # the quote is printed text the quote check can find
+
+
+@pytest.mark.parametrize("text", [
+    "statement on forbearance in relation to investment trust disclosure requirements dated 19 September 2024",  # F14: not the KID's date
+    "Date of Production: see our website, where every document we publish is listed 1 September 2025",  # more than 40 characters in between
+    "This key information document was produced on page 2 1 September 2025",  # a number in between
+    "This key information document was produced on 31 July 202612",  # two digits after the year
+    "Date of Production: 2026-06-08",                                 # year first isn't how KIDs print it
+    "Our document is dated soon",                                      # no date at all
+])
+def test_dates_that_arent_the_kids_own_give_not_found(text):
+    assert kid._doc_date(text, []).value == NOT_FOUND
+
+
+def test_a_space_before_the_percent_sign():  # F27, F28
+    fields, _ = costs("What are the costs? Composition of costs Portfolio transaction costs 0 % underlying "
+                      "investments. Other ongoing costs 0.00 % The impact. How long should I hold it")
+    assert fields["transaction_cost_pct"].value == "0"
+    assert fields["ongoing_charge_pct"].value == "0.00"
+
+
+@pytest.mark.parametrize("row, value", [
+    ("Impact on return each year 1.79% 1.79% 1.79%", "1.79"),            # F24
+    ("Reduction in Yield (RIY) per year 0.00 % 0.00 %", "0.00"),         # F28
+    ("Impact on return (RIY) per year 0% 0% N/A", NOT_FOUND),            # the last column decides
+])
+def test_more_total_cost_wordings(row, value):
+    fields, _ = costs(f"What are the costs? Total costs £0 £0 {row} Composition of costs Entry costs 0% "
+                      "How long should I hold it")
+    assert fields["total_cost_pct"].value == value
+
+
+def test_composition_heading_in_any_case():  # F28: "Composition of Costs"
+    # Only a transaction row, so it's the heading alone that marks this as a cost table.
+    fields, notes = costs("What are the costs? Composition of Costs Portfolio transaction costs 0.10 % The impact. "
+                          "How long should I hold it")
+    assert fields["transaction_cost_pct"].value == "0.10"
+    assert "No cost table" not in " ".join(notes)
+
+
+def test_a_cost_table_without_its_heading():  # F20
+    fields, notes = costs("What are the costs? Total costs £0 £0 £0 Impact on return (RIY) per year 0% 0% 0% "
+                          "Entry costs N/A There is no charge. Portfolio transaction costs N/A investments. "
+                          "Other ongoing costs N/A investments. How long should I hold it")
+    assert fields["total_cost_pct"].value == "0"
+    assert fields["transaction_cost_pct"].value == NOT_FOUND
+    assert fields["ongoing_charge_pct"].value == NOT_FOUND
+    assert notes == []
+
+
+def test_rows_without_the_heading_are_read_with_their_figures():
+    fields, _ = costs("What are the costs? Entry costs 0% None. Portfolio transaction costs 0.10% investments. "
+                      "Other ongoing costs 0.50% The impact. How long should I hold it")
+    assert fields["transaction_cost_pct"].value == "0.10"
+    assert (fields["ongoing_charge_pct"].value, fields["charge_label"].value) == ("0.50", "Other ongoing costs")
+
+
+def test_no_table_ongoing_charges_figure_with_the_description_mixed_in():  # F26
+    fields, notes = costs("What are the costs? The Ongoing Charges figure stated below is taken from the Company's most "
+                          "recent Annual Report and represents the total of investment management fees and other expenses "
+                          "of the Company. Ongoing Charges figure for the year to 31 These are expenses incurred by the "
+                          "Company and no 0.73% December 2025 additional charge. Ongoing Charges figure including fee "
+                          "waived These are expenses 0.59% for the year. How long should I hold it")
+    assert fields["ongoing_charge_pct"].value == "0.73"
+    assert fields["charge_label"].value == "Ongoing Charges figure"
+    assert fields["ongoing_charge_pct"].quote.startswith("Ongoing Charges figure for the year to 31")
+    assert notes == ["No cost table: ongoing charge taken from the cost section."]
+
+
+@pytest.mark.parametrize("text", [
+    "Ongoing Charges figure, see the annual report. Ongoing Charge history is on the website. 0.73%",  # runs into another charge
+    "Ongoing Charges figure " + "and more words " * 10 + "0.73%",                                       # too far away
+])
+def test_no_table_charge_too_far_away_or_past_another_charge_is_not_used(text):
+    fields, _ = costs(f"What are the costs? {text} How long should I hold it")
+    assert fields["ongoing_charge_pct"].value == NOT_FOUND
+
+
+def test_label_completed_two_lines_down():  # F28: the figure and description sit in between
+    page = ("What are the costs?\nComposition of Costs\nOngoing costs\nOther ongoing\n"
+            "0.00 % The impact of the costs for managing your investment.\ncosts\nHow long should I hold it")
+    fields, notes = costs(page)
+    assert fields["charge_label"].value == "Other ongoing costs"
+    assert fields["charge_label"].quote == "Other ongoing 0.00 % The impact of the costs for managing your investment. costs"
+    assert fields["charge_label"].quote in kid.normalise(page)
+
+
+def test_label_not_completed_three_lines_down():
+    page = ("What are the costs?\nComposition of costs\nOther ongoing\n0.00 % The impact\nof the costs\ncosts\n"
+            "How long should I hold it")
+    fields, notes = costs(page)
+    assert fields["charge_label"].value == NOT_FOUND
+    assert any("Couldn't read the whole row label" in note for note in notes)
