@@ -84,6 +84,7 @@ Run these from the project folder:
 .venv/bin/python -m fundcrosschecker factsheet pdfs/unseen/          # the unseen trusts' factsheets
 .venv/bin/python -m fundcrosschecker score --unseen --factsheets     # scored apart, in their own file
 .venv/bin/python -m pytest                              # run the tests
+.venv/bin/python -m pytest -m slow                      # the slow check: the scale graphic reader on all 48 PDFs
 ```
 
 The tests don't need the PDFs or an API key: the tests that read real PDFs skip themselves when the PDFs aren't there, and the factsheet tests use a stand-in for Claude.

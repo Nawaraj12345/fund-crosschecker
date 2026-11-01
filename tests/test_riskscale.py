@@ -216,3 +216,29 @@ def test_real_documents(path, expected):
         pytest.skip(f"{path} isn't here (PDFs aren't in the repo)")
     found = riskscale.read_scale(pdf)
     assert (found[:2] if found else None) == expected
+
+
+@pytest.mark.slow
+def test_the_reader_agrees_with_the_answer_key_wherever_it_reads_a_score():
+    """The check made before the reader was added, kept so it can be repeated: on every
+    document except the unseen factsheets (kept for their one honest run), a score read
+    from the graphic must equal the answer key's, and none may be read where the key
+    says not_found. The set of documents it reads isn't pinned, only these rules."""
+    import csv
+    key = {}
+    for path in (PROJECT / "data" / "answer_key.csv", PROJECT / "data" / "unseen" / "answer_key.csv"):
+        with path.open(encoding="utf-8") as f:
+            key.update({(r["fund_id"], r["doc_type"]): r["risk_score"] for r in csv.DictReader(f)})
+    pdfs = sorted(p for pattern in ("F*_kid.pdf", "F*_kiid.pdf", "F*_factsheet.pdf") for p in (PROJECT / "pdfs").glob(pattern))
+    pdfs += sorted((PROJECT / "pdfs" / "unseen").glob("F*_kid.pdf"))
+    assert not any(p.parent.name == "unseen" and p.name.endswith("_factsheet.pdf") for p in pdfs)
+    if len(pdfs) < 48:
+        pytest.skip(f"only {len(pdfs)} of the 48 PDFs are here (PDFs aren't in the repo)")
+    read = {}
+    for pdf in pdfs:
+        found = riskscale.read_scale(pdf)
+        if found:
+            read[pdf.stem] = str(found[0])
+    wrong = {name: (score, key[tuple(name.split("_"))]) for name, score in read.items() if score != key[tuple(name.split("_"))]}
+    assert wrong == {}
+    assert {"F02_factsheet", "F03_factsheet", "F08_factsheet", "F20_kid"} <= set(read)
