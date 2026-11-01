@@ -101,7 +101,7 @@ The `factsheet` command needs your own Anthropic API key (create one at https://
 - `data/comparison_key.csv`: the expected verdict for each fund's ongoing charge and risk score (F01–F19), written by hand before the comparison code.
 - `data/README.md`: the rules for every answer key column. The main rule is **record only what's printed**. `not_found` means checked and not shown; an empty cell means not checked yet.
 
-Every answer key value was checked against its PDF's text by script, and every risk score against the document's wording or its risk graphic on the rendered page. It hasn't been checked line by line by hand.
+Every answer key value was checked against its PDF's text by script, and every risk score against the document's wording or its risk graphic on the rendered page. On 1 November 2026, 20 values from the F01–F19 key, picked at random (seed 20261031), were checked by hand against the PDFs: all 20 were right. The rest of the key, and the unseen trusts' key, haven't been checked by hand.
 
 ## Project layout
 
