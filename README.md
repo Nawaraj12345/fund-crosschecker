@@ -1,5 +1,7 @@
 # Fund CrossChecker
 
+**Does a fund's factsheet give the same figures as its own KID?**
+
 Fund CrossChecker is being built to check whether a UK investment trust's **factsheet** and its **Key Information Document (KID)** give the same figures, starting with costs. Where they differ, it will show both numbers, where each one came from, and why they might differ.
 
 It's for a fund selector at a wealth manager: someone who passes a trust's cost on to clients and needs to know which figure to trust.
