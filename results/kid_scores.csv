@@ -179,3 +179,13 @@ run_date,git_commit,field,correct,wrong,missed,made_up
 2026-11-01,17a3ac6,risk_score,14,0,0,0
 2026-11-01,17a3ac6,risk_method,14,0,0,0
 2026-11-01,17a3ac6,doc_date,14,0,0,0
+2026-11-01,807b2ed,fund_name,14,0,0,0
+2026-11-01,807b2ed,isin,14,0,0,0
+2026-11-01,807b2ed,share_class,14,0,0,0
+2026-11-01,807b2ed,ongoing_charge_pct,14,0,0,0
+2026-11-01,807b2ed,charge_label,14,0,0,0
+2026-11-01,807b2ed,transaction_cost_pct,14,0,0,0
+2026-11-01,807b2ed,total_cost_pct,14,0,0,0
+2026-11-01,807b2ed,risk_score,14,0,0,0
+2026-11-01,807b2ed,risk_method,14,0,0,0
+2026-11-01,807b2ed,doc_date,14,0,0,0
