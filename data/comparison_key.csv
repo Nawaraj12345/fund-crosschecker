@@ -1,0 +1,39 @@
+fund_id,field,verdict,reasons,notes
+F01,ongoing_charge_pct,match,,0.20 on both
+F01,risk_score,match,scale_not_stated,4 on both; the factsheet names SRRI and the KIID names no scale
+F02,ongoing_charge_pct,match,,0.05 on both
+F02,risk_score,match,scale_not_stated,5 on both; neither names its scale
+F03,ongoing_charge_pct,match,,0.12 on both
+F03,risk_score,match,scale_not_stated,5 on both; neither names its scale
+F04,ongoing_charge_pct,mismatch,no_reason,1.12 vs 1.52; both labels give the year to 31 Aug 2025
+F04,risk_score,cant_compare,factsheet_none,KID 4
+F05,ongoing_charge_pct,cant_compare,factsheet_none,KID 0.70; the factsheet gives only the management fee
+F05,risk_score,cant_compare,factsheet_none,KID 4
+F06,ongoing_charge_pct,mismatch,kid_table_zero;kid_text_other;far_apart,0.69 vs 0.00; the KID's text gives 0.77 for the year to 30 Apr 2025; 384 days apart
+F06,risk_score,cant_compare,factsheet_none,KID 5
+F07,ongoing_charge_pct,cant_compare,different_share_class,0.91 (I USD Acc) vs 0.92 (I GBP Acc)
+F07,risk_score,cant_compare,different_share_class,7 on both but for different share classes
+F08,ongoing_charge_pct,match,,0.825 on both
+F08,risk_score,match,scale_not_stated,5 on both; the factsheet names SRRI and the KIID names no scale
+F09,ongoing_charge_pct,mismatch,far_apart,0.6 vs 0.8; the KID is from 29 Dec 2017 (3197 days apart)
+F09,risk_score,cant_compare,factsheet_none,KID 4
+F10,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints n/a; its text gives 0.73 like the factsheet
+F10,risk_score,cant_compare,factsheet_none,KID 4
+F11,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints N/A; its text gives 0.67 like the factsheet
+F11,risk_score,cant_compare,factsheet_none,KID 3
+F12,ongoing_charge_pct,mismatch,kid_table_zero;far_apart,0.56 vs 0.00; 547 days apart
+F12,risk_score,cant_compare,factsheet_none,KID 5
+F13,ongoing_charge_pct,cant_compare,factsheet_none;kid_text_other,the factsheet prints no charge; KID table 0.00 and its text 1.35
+F13,risk_score,cant_compare,factsheet_none,KID 5
+F14,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints N/A; its text gives 1.03 like the factsheet (and last year's 1.10)
+F14,risk_score,cant_compare,factsheet_none,KID 4
+F15,ongoing_charge_pct,mismatch,far_apart,0.79 vs 0.78; 384 days apart
+F15,risk_score,cant_compare,factsheet_none,KID 5
+F16,ongoing_charge_pct,match,,0.45 on both
+F16,risk_score,cant_compare,factsheet_none,KID 4
+F17,ongoing_charge_pct,match,,1.07 on both
+F17,risk_score,cant_compare,factsheet_none,KID 3
+F18,ongoing_charge_pct,match,,1.03 on both
+F18,risk_score,cant_compare,factsheet_none,KID 3
+F19,ongoing_charge_pct,cant_compare,kid_none;kid_text_same,the KID's table prints N/A; its text gives 0.74 like the factsheet
+F19,risk_score,cant_compare,factsheet_none,KID 4

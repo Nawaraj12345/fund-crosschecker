@@ -44,3 +44,15 @@ An empty cell means not checked yet. `not_found` means checked, and the document
 ## unseen/
 
 The trusts for the unseen-trusts test: ten trusts that were never looked at while the rules were written. `unseen/sources.csv` and `unseen/answer_key.csv` have the same columns as the files above, and their PDFs go in `pdfs/unseen/`. They're kept apart so their score is never mixed with the development score. The answer key was written from the PDFs and committed before the tool was run on them, so the commit history shows it wasn't fitted to the tool's output: the KID rows on 31 October and 1 November 2026, the factsheet rows on 1 November 2026, before the factsheet extractor read any of them.
+
+## comparison_key.csv
+
+The expected result of comparing each fund's factsheet with its KID or KIID (Story 3.1), for F01–F19: one row per fund and compared field (`ongoing_charge_pct`, `risk_score`). Written by hand from `answer_key.csv` and from the figures the KIDs give outside their cost rows (each checked in the PDF), and committed before the comparison code, so the comparison is scored against what the documents say rather than against its own output. F20–F29 get their rows once their factsheets have been read; since their values were looked at while the comparison rules were designed, any score on them is a development score.
+
+| Column | What to write |
+|---|---|
+| `fund_id` | Same as in `answer_key.csv` |
+| `field` | `ongoing_charge_pct` or `risk_score` |
+| `verdict` | `match` (both print it and the numbers are equal, so 0.6 = 0.60), `mismatch` (both print it and the numbers differ, with no tolerance) or `cant_compare` (either side prints nothing, or the two documents are for different share classes). The text `not_found` is never compared |
+| `reasons` | Codes separated by `;`, in any order. Which side prints nothing: `factsheet_none`, `kid_none` (also for a KIID), `neither_none`. `different_share_class`: both print an ISIN and they differ. For the ongoing charge: `kid_table_zero` (a mismatch where the KID's figure is 0 and the factsheet's isn't), `kid_text_same` (the KID gives the factsheet's figure outside its cost row), `kid_text_other` (it gives other figures there, none equal to the factsheet's), `far_apart` (a mismatch where the documents' dates are 365 days or more apart), `no_reason` (a mismatch with none of these). For the risk score: `scale_not_stated` (a match where either document doesn't name its scale), `different_scales` (both name a scale and they differ). Empty for a plain match |
+| `notes` | The values and anything worth knowing |
