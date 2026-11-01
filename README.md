@@ -121,5 +121,9 @@ pdfs/              the downloaded PDFs, never committed
 | When | What |
 |---|---|
 | Sprint 2 (to 29 Nov 2026) | Done: the test on 10 trusts the tool hadn't seen (their KIDs 71 of 100), then the checks' known gaps, checks that allow for factsheet text, and the KID wordings that test showed up; then the same trusts' factsheets, still unseen (96 of 100), and fixes for three of the four values that test got wrong |
-| Sprint 3 (30 Nov – 13 Dec 2026) | Done early: the ordinary funds' KIIDs (the controls, 50 of 50) and the comparison on F01–F19 (38 of 38 verdicts, 0 false alarms). Next: the comparison for F20–F29, now that their factsheets are read (a development score, since their values were looked at while designing it), and making the repo public |
+| Sprint 3 (30 Nov – 13 Dec 2026) | Done early: the ordinary funds' KIIDs (the controls, 50 of 50) and the comparison on F01–F19 (38 of 38 verdicts, 0 false alarms). Next: the comparison for F20–F29, now that their factsheets are read (a development score, since their values were looked at while designing it) |
 | Later | CCI product summaries (expected from early 2027), a whole buy list at once, and a simple web page |
+
+## Licence
+
+The code is under the MIT licence (see `LICENSE`). The fund documents aren't in the repo; the quotes in `data/` are short extracts from documents that belong to their publishers.
