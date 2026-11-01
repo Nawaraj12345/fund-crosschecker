@@ -431,8 +431,16 @@ def test_same_word(label_word, quote_word, same):
     ("Ordinary shares", "Ordinary shares in RIT Capital Partners plc", True),    # F10 KID: "in", but not "in issue"
     ("Ordinary shares", "Ordinary shares in issuers' markets", True),            # "issuers" isn't "issue"
     ("Ordinary shares", "Ordinary shares in issue: 9. Ordinary shares 1.2p", True),  # also printed as a name
-    ("Class A (Acc)", "Class A (Acc) shares in issue 5", True),                  # "shares" comes first, so not a count of the class
+    ("Class A (Acc)", "Class A (Acc) shares in issue 5", False),                 # a count, with "shares" between
     ("Class A (Acc)", "Class A (Acc) in issue 5", False),                        # brackets in the value are matched as text
+    ("Class A (Acc)", "Class A (Acc) GBP", True),
+    ("Ordinary", "Ordinary shares in issue: 484,494,150", False),                # a shorter value from the same count
+    ("Ordinary shares", "Ordinary shares outstanding 484,494,150", False),       # another wording of a count
+    ("Ordinary shares", "Number of Ordinary shares 484,494,150", False),         # the count named in front
+    ("Ordinary shares", "Number of the Ordinary shares: 5", False),
+    ("Ordinary shares", "Ordinary shares number of votes", True),                # "number of" after it isn't a count of it
+    ("Ordinary shares", "Ordinary shares outstandingly cheap", True),            # "outstandingly" isn't "outstanding"
+    ("C shares", "C shares in issue: 50,000,000", False),                        # chosen trade-off: a miss for a trust with more than one class
 ])
 def test_a_share_class_from_a_count_of_shares_is_removed(value, quote, ok):
     fields = {"share_class": Field(value, 1, quote)}

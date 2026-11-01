@@ -46,8 +46,8 @@ def test_a_bracket_over_two_lines_between_other_columns():
 
 
 def test_a_footnote_letter_on_the_label_still_finds_it():
-    page = line(100, ("Ongoing", 10, 40), ("chargesD", 42, 75), ("0.50%", 120, 140)) + line(109, ("(2025)", 10, 30))
-    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.50") == "(2025)"
+    page = line(100, ("Ongoing", 10, 40), ("chargesD", 42, 75), ("0.50%", 120, 140)) + line(109, ("(fixed)", 10, 30))
+    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.50") == "(fixed)"
 
 
 @pytest.mark.parametrize("mark", ["•", "–", ""])
@@ -56,8 +56,9 @@ def test_a_bullet_before_the_label_isnt_a_second_place(mark):
     assert labelwrap.wrapped_bracket(page, F03_LABEL, "0.12") == "(fixed)"
 
 
-def test_no_bracket_under_the_label():
-    page = F03[:8] + line(325.9, ("Fixed", 31.2, 52.7))
+@pytest.mark.parametrize("text", ["Fixed", ")ab(", ")(fixed"])
+def test_no_bracket_under_the_label(text):
+    page = F03[:8] + line(325.9, (text, 31.2, 52.7))
     assert labelwrap.wrapped_bracket(page, F03_LABEL, "0.12") is None
 
 
@@ -78,11 +79,11 @@ def test_a_bracket_right_of_the_figures_edge_isnt_in_the_labels_column():
 
 
 def test_a_bracket_that_doesnt_close_within_three_lines():
-    page = (F03[:8] + line(325.9, ("(a", 31.2, 40)) + line(333, ("b", 31.2, 40))
-            + line(340, ("c", 31.2, 40)) + line(347, ("d)", 31.2, 40)))
+    page = (F03[:8] + line(325.9, ("(ab", 31.2, 40)) + line(333, ("cd", 31.2, 40))
+            + line(340, ("ef", 31.2, 40)) + line(347, ("gh)", 31.2, 40)))
     assert labelwrap.wrapped_bracket(page, F03_LABEL, "0.12") is None
-    closes_on_the_third = page[:-2] + line(340, ("c)", 31.2, 40))
-    assert labelwrap.wrapped_bracket(closes_on_the_third, F03_LABEL, "0.12") == "(a b c)"
+    closes_on_the_third = page[:-2] + line(340, ("ef)", 31.2, 40))
+    assert labelwrap.wrapped_bracket(closes_on_the_third, F03_LABEL, "0.12") == "(ab cd ef)"
 
 
 def test_the_label_must_have_its_figure_beside_it_and_only_once():
@@ -91,10 +92,72 @@ def test_the_label_must_have_its_figure_beside_it_and_only_once():
     assert labelwrap.wrapped_bracket(twice, F03_LABEL, "0.12") is None  # two places: unsure which
 
 
-@pytest.mark.parametrize("text, ok", [("0.12%", True), ("0.12", True), ("0.12 %", True),
-                                      ("10.12%", False), ("0.123%", False), ("0.12%)", False)])
+@pytest.mark.parametrize("text, ok", [("0.12%", True), ("0.12", True), ("0.12%†", True), ("0.12%*", True),
+                                      ("0.12%**", True), ("10.12%", False), ("0.123%", False),
+                                      ("0.12%)", False), ("0.12%***", False), ("0.12%1", False)])
 def test_is_figure(text, ok):
     assert labelwrap.is_figure(text, "0.12") == ok
+
+
+# --- from the code review of 1 Nov 2026: layouts that must give nothing (or the right thing) ---
+
+LABEL_ROW = line(100, ("Ongoing", 10, 40), ("charges", 42, 70), ("0.50%", 120, 140))
+
+
+def test_words_on_one_line_are_read_left_to_right():
+    # "12" sits a tenth of a point lower than its neighbours (another font): still one line, in order.
+    page = F03[:8] + line(325.9, ("(for", 31.2, 45), ("months):", 60, 90)) + line(326.0, ("12", 47, 55))
+    assert labelwrap.wrapped_bracket(page, F03_LABEL, "0.12") == "(for 12 months)"
+
+
+def test_the_figure_must_be_the_next_word_beside_the_label():
+    # "Ongoing charges | Class A | 0.50%": the column between them makes the label's own column unclear.
+    page = (line(100, ("Ongoing", 10, 40), ("charges", 42, 70), ("Class", 80, 95), ("A", 97, 100), ("0.50%", 120, 140))
+            + line(109, ("(incl.", 10, 30), ("(as", 80, 92)) + line(118, ("fees)", 10, 30), ("at)", 80, 92)))
+    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.50") is None
+
+
+def test_a_word_running_past_the_figures_edge_stops_it():
+    page = (LABEL_ROW + line(109, ("(year", 10, 30), ("end", 32, 50), ("2025)", 100, 125))
+            + line(118, ("Entry", 10, 30), ("charge", 32, 60), ("none)", 62, 80)))
+    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.50") is None
+
+
+def test_a_row_with_its_own_figure_isnt_the_labels_wrap():
+    page = LABEL_ROW + line(109, ("(incl.", 10, 30), ("performance", 32, 70), ("fee)", 72, 85), ("0.75%", 120, 140))
+    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.50") is None
+    # F24's other class: a figure on a line the bracket only passes through is fine.
+    assert labelwrap.wrapped_bracket(F24, "Ongoing charges ratio", "1.36") == "(for 12 months ended 30 June 2026)"
+
+
+@pytest.mark.parametrize("words", [
+    [("(1)", 10, 20), ("Source:", 22, 50), ("Morningstar", 52, 100)],   # a footnote list under the last row
+    [("(*)", 10, 20), ("Source:", 22, 50)],
+    [("(1)", 10, 20)],                                                  # a footnote mark on its own
+])
+def test_a_footnote_line_isnt_a_bracket(words):
+    assert labelwrap.wrapped_bracket(LABEL_ROW + line(109, *words), "Ongoing charges", "0.50") is None
+
+
+def test_a_bracket_with_more_of_the_cell_after_it_isnt_cut_short():
+    page = LABEL_ROW + line(109, ("(fixed)", 10, 30), ("per", 32, 45), ("annum", 47, 70))
+    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.50") is None
+
+
+def test_a_label_quote_printed_earlier_on_the_page_too():
+    earlier = "The Ongoing Charges are explained in the glossary. " + "x " * 250
+    page = earlier + "Ongoing Charges 0.67% London W1K 4BP (30 April 2026)"
+    label = "Ongoing Charges (30 April 2026)"
+    assert labelwrap.joining_quote(page, "Ongoing Charges", label) == "Ongoing Charges 0.67% London W1K 4BP (30 April 2026)"
+
+
+def test_line_grouping_is_done_once_and_scales():
+    import time
+    page = [w for i in range(60) for w in line(i * 9.0, *[(f"word{i}x{j}", 10 + j * 11, 19 + j * 11) for j in range(50)])]
+    page += line(600, ("Ongoing", 10, 40), ("charges", 42, 70), ("0.5%", 300, 320)) + line(608, ("(fixed)", 10, 30))
+    start = time.perf_counter()
+    assert labelwrap.wrapped_bracket(page, "Ongoing charges", "0.5") == "(fixed)"
+    assert time.perf_counter() - start < 1.0  # 3,004 words
 
 
 # --- extend_label: the label in the fields ------------------------------------------------
@@ -134,7 +197,7 @@ def test_extend_label(monkeypatch):
 @pytest.mark.parametrize("fields", [
     f03_fields(label=NOT_FOUND),            # no label to add to
     f03_fields(charge=NOT_FOUND),           # no figure, so no label either
-    f03_fields(label=f"{F03_LABEL} (fixed)"),  # the answer already has the bracket
+    f03_fields(label=f"{F03_LABEL} (fixed)"),  # already has it: its words aren't all on one line, so no place
     {"ongoing_charge_pct": Field("0.12", 1, "0.12%"), "charge_label": Field(F03_LABEL)},  # no page
     {},                                     # a document type without these fields
 ])
@@ -213,16 +276,18 @@ def test_on_every_factsheet_it_only_adds_what_the_answer_key_has():
     import re
 
     import pdfplumber
+    # Each answer key sits beside the folder of its PDFs: data/ with pdfs/, data/unseen/ with pdfs/unseen/.
     rows = []
-    for key in (PROJECT / "data" / "answer_key.csv", PROJECT / "data" / "unseen" / "answer_key.csv"):
+    for key, folder in ((PROJECT / "data" / "answer_key.csv", PROJECT / "pdfs"),
+                        (PROJECT / "data" / "unseen" / "answer_key.csv", PROJECT / "pdfs" / "unseen")):
         with key.open(encoding="utf-8") as f:
-            rows += [r for r in csv.DictReader(f) if r["doc_type"] == "factsheet" and r["charge_label"] != NOT_FOUND]
+            rows += [(r, folder / f"{r['fund_id']}_factsheet.pdf") for r in csv.DictReader(f)
+                     if r["doc_type"] == "factsheet" and r["charge_label"] != NOT_FOUND]
+    missing = [pdf.name for _, pdf in rows if not pdf.exists()]
+    if missing:  # checked before any assertion, so a skip never hides a result
+        pytest.skip(f"{len(missing)} of {len(rows)} factsheet PDFs aren't here (PDFs aren't in the repo)")
     fired = set()
-    for row in rows:
-        folder = "unseen/" if int(row["fund_id"][1:]) >= 20 else ""
-        pdf = PROJECT / "pdfs" / f"{folder}{row['fund_id']}_factsheet.pdf"
-        if not pdf.exists():
-            pytest.skip("the PDFs aren't here")
+    for row, pdf in rows:
         base = re.sub(r" \([^()]*\)$", "", row["charge_label"])
         with pdfplumber.open(pdf) as document:
             for page in document.pages:

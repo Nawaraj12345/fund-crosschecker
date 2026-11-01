@@ -23,8 +23,10 @@ RISK_NAMES = {
 MONTHS = ["January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December"]
 EARLIEST_DATE = date(2017, 1, 1)
-# Words after a share class that make it a count of shares, not the name of a class.
-SHARE_COUNT = re.compile(r" ?(?:in issue|held in treasury)\b", re.IGNORECASE)
+# Words around a share class that make it a count of shares, not the name of a class:
+# "Ordinary shares in issue", "Ordinary shares outstanding", "Number of Ordinary shares".
+COUNT_AFTER = re.compile(r" ?(?:shares? )?(?:in issue|outstanding|held in treasury)\b", re.IGNORECASE)
+COUNT_BEFORE = re.compile(r"\bnumber of (?:the )?$", re.IGNORECASE)
 
 
 def check_fields(fields: dict[str, Field], pages: list[str], notes: list[str],
@@ -128,8 +130,10 @@ def value_in_quote(name: str, value: str, quote: str) -> bool:
     if name == "share_class":
         # A line that counts the shares doesn't name a class: "Ordinary shares in Issue:
         # 484,494,150" (F26 factsheet), "Ordinary shares held in treasury: 6,102,806" (F23).
-        # So the class must be printed somewhere in its quote without those words after it.
-        return any(not SHARE_COUNT.match(quote, found.end())
+        # So the class must be printed somewhere in its quote outside such a count. For a
+        # trust with more than one class this can turn a right answer into a miss ("C shares
+        # in issue" does name the class), which is the safer way to be wrong.
+        return any(not COUNT_AFTER.match(quote, found.end()) and not COUNT_BEFORE.search(quote, 0, found.start())
                    for found in re.finditer(re.escape(normalise(value)), quote))
     return normalise(value) in quote
 

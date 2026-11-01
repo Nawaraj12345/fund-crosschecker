@@ -1,7 +1,8 @@
 """Read a PDF's text layer.
 
-This and riskscale.py (which reads the risk scale's drawing) are the only
-modules that use pdfplumber, so the PDF library can be swapped in two places.
+This, riskscale.py (which reads the risk scale's drawing) and labelwrap.py
+(which reads where a charge label's words sit) are the only modules that use
+pdfplumber, so the PDF library can be swapped in three places.
 
 pdfplumber reads across the whole page, so on two-column pages (F16's page 1)
 the left and right columns are merged line by line. A value on one line is
