@@ -19,3 +19,13 @@ run_date,git_commit,field,correct,wrong,missed,made_up
 2026-11-01,7717cbe,risk_score,9,0,1,0
 2026-11-01,7717cbe,risk_method,10,0,0,0
 2026-11-01,7717cbe,doc_date,10,0,0,0
+2026-11-01,12e7ace,fund_name,9,0,1,0
+2026-11-01,12e7ace,isin,10,0,0,0
+2026-11-01,12e7ace,share_class,9,0,1,0
+2026-11-01,12e7ace,ongoing_charge_pct,10,0,0,0
+2026-11-01,12e7ace,charge_label,10,0,0,0
+2026-11-01,12e7ace,transaction_cost_pct,10,0,0,0
+2026-11-01,12e7ace,total_cost_pct,10,0,0,0
+2026-11-01,12e7ace,risk_score,9,0,1,0
+2026-11-01,12e7ace,risk_method,10,0,0,0
+2026-11-01,12e7ace,doc_date,10,0,0,0
