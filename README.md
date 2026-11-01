@@ -6,6 +6,8 @@ Fund CrossChecker checks whether a UK investment trust's **factsheet** and its *
 
 It's for a fund selector at a wealth manager: someone who passes a trust's cost on to clients and needs to know which figure to trust.
 
+**Information only, not investment advice.** It reports what each document prints and whether the figures agree, for every fund it reads; it doesn't rate, rank or recommend any fund.
+
 ## Why it's needed
 
 - A trust's factsheet and its KID both come from the same manager, so you'd expect them to agree. They don't always.
