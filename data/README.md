@@ -43,4 +43,4 @@ An empty cell means not checked yet. `not_found` means checked, and the document
 
 ## unseen/
 
-The trusts for the unseen-trusts test: ten trusts that were never looked at while the rules were written. `unseen/sources.csv` and `unseen/answer_key.csv` have the same columns as the files above, and their PDFs go in `pdfs/unseen/`. They're kept apart so their score is never mixed with the development score. The answer key was written from the PDFs and committed before the tool was run on them, so the commit history shows it wasn't fitted to the tool's output.
+The trusts for the unseen-trusts test: ten trusts that were never looked at while the rules were written. `unseen/sources.csv` and `unseen/answer_key.csv` have the same columns as the files above, and their PDFs go in `pdfs/unseen/`. They're kept apart so their score is never mixed with the development score. The answer key was written from the PDFs and committed before the tool was run on them, so the commit history shows it wasn't fitted to the tool's output: the KID rows on 31 October and 1 November 2026, the factsheet rows on 1 November 2026, before the factsheet extractor read any of them.
