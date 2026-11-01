@@ -119,7 +119,9 @@ def test_a_different_date_in_the_quote_is_removed():
 
 
 def test_printed_dates():
-    assert printed_dates("2026-06-08") == ["08/06/2026", "08-06-2026", "8 June 2026", "08 June 2026"]
+    assert printed_dates("2026-06-08") == ["08/06/2026", "08-06-2026", "08.06.2026", "08.06.26",
+                                           "8 June 2026", "08 June 2026", "8 Jun 2026", "08 Jun 2026",
+                                           "08-Jun-2026"]
 
 
 @pytest.mark.parametrize("quote, ok", [
@@ -219,17 +221,17 @@ def test_to_number_rejects_other_forms(value, number):
     assert to_number(value) == number
 
 
-# --- known weaknesses (found 2026-10-31) ---------------------------------------------
-# checks.py stays unchanged until the unseen-trusts KID run, so these are recorded as
-# expected failures. strict=True: once fixed, these tests fail until the marker is removed.
-FROZEN = "known weakness in checks.py, frozen until the unseen-trusts KID run"
+# --- weaknesses found on 2026-10-31, fixed after the unseen-trusts KID run --------------
 
-
-@pytest.mark.xfail(strict=True, reason=FROZEN)
 @pytest.mark.parametrize("value, quote", [
     ("1", "Ongoing charges 1.5%"),      # a whole number inside a decimal
     ("1", "Total costs £1,000"),        # inside a number with a thousands comma
-    ("0.5", "Performance -0.5%"),       # the sign is ignored
+    ("0.5", "Performance -0.5%"),       # a minus sign in front
+    ("0.5", "Performance −0.5%"),       # the minus character (U+2212)
+    ("0", "Other ongoing costs 0.00%"), # the start of a decimal
+    ("1", "1 .03%"),                    # the start of a split decimal (joined first)
+    ("1", "SRRI1 4"),                   # a footnote number stuck to a word (F01 factsheet)
+    ("4", "ratio4 0.6%"),
 ])
 def test_a_number_inside_another_number_is_not_accepted(value, quote):
     fields, notes = {"ongoing_charge_pct": Field(value, 1, quote)}, []
@@ -237,9 +239,83 @@ def test_a_number_inside_another_number_is_not_accepted(value, quote):
     assert fields["ongoing_charge_pct"].value == NOT_FOUND
 
 
-@pytest.mark.xfail(strict=True, reason=FROZEN)
-def test_an_empty_text_value_is_not_accepted():
-    # factsheet.py turns an empty answer into not_found itself; the shared check doesn't.
-    fields, notes = {"fund_name": Field("", 1, "F&C Investment Trust PLC")}, []
-    check_fields(fields, ["F&C Investment Trust PLC"], notes, TODAY)
-    assert fields["fund_name"].value == NOT_FOUND
+@pytest.mark.parametrize("value, quote", [
+    ("1.03", "1 .03%"),                                         # F14 factsheet: the text layer splits it
+    ("4", "We have classified this product as 4, which is"),    # a comma after it isn't a decimal
+    ("4", "classified this product as 4."),                     # nor a full stop at the end
+    ("5", "5 out of 7"),
+    ("0", "Impact on return (RIY) per year 0% 0% 0%"),
+    ("4", "SRRI1 4"),                                            # the real score next to a footnote
+    ("0.73", "OCF6 0.73%"),
+])
+def test_a_number_on_its_own_is_accepted(value, quote):
+    fields, notes = {"ongoing_charge_pct": Field(value, 1, quote)}, []
+    check_fields(fields, [quote], notes, TODAY)
+    assert fields["ongoing_charge_pct"].value == value, notes
+
+
+@pytest.mark.parametrize("name, value", [
+    ("fund_name", ""), ("fund_name", "   "), ("share_class", ""), ("charge_label", " "),
+])
+def test_an_empty_text_value_is_not_accepted(name, value):
+    fields = {"ongoing_charge_pct": Field("1", 1, "1%"), name: Field(value, 1, "F&C Investment Trust PLC")}
+    run(fields, ["F&C Investment Trust PLC 1%"])
+    assert fields[name].value == NOT_FOUND
+    assert format_problem(name, value, TODAY) == "empty"
+
+
+# --- what factsheet text needs (found on the 19 development factsheets) -------------------
+
+@pytest.mark.parametrize("value, quote", [
+    ("2026-09-30", "Net Asset information as at: 30-Sep-2026"),          # F02 factsheet
+    ("2026-09-30", "30.09.26 Monthly Factsheet Marketing Communication"),  # F03 factsheet
+    ("2026-09-30", "Factsheetasof30September2026"),                      # F19 factsheet: no spaces
+    ("2026-10-05", "Last Updated On 05.10.2026"),                        # F29 KID
+    ("2026-01-08", "THIS DOCUMENT WAS PRODUCED ON 8 JANUARY 2026"),      # F25 KID: capitals
+    ("2026-09-30", "as at 30 Sep 2026"),
+])
+def test_more_date_formats_are_found(value, quote):
+    fields = {"doc_date": Field(value, 1, quote)}
+    assert run(fields, [quote]) == []
+
+
+@pytest.mark.parametrize("value, quote", [
+    ("2026-06-08", "Produced 18 June 2026"),          # 8 June isn't in 18 June
+    ("2026-06-08", "Produced 18/06/2026"),
+    ("2026-06-08", "Produced18June2026"),             # nor with the spaces gone
+    ("2026-07-31", "produced on 31 July 202612"),     # two digits after the year: a longer number
+    ("2026-09-30", "30.09.25 Monthly Factsheet"),     # a different year
+    ("2026-09-30", "30-Oct-2026"),                    # a different month
+])
+def test_a_date_inside_another_number_or_a_different_date_is_removed(value, quote):
+    fields = {"doc_date": Field(value, 1, quote)}
+    run(fields, [quote])
+    assert fields["doc_date"].value == NOT_FOUND
+
+
+@pytest.mark.parametrize("value, quote, ok", [
+    ("Ongoing Charges Figure (OCF)", "Ongoing Charges Figure (OCF2) 0.20%", True),  # F01: bracket and footnote 2
+    ("Ongoing Charges Ratio (‘OCR’)", "Ongoing Charges Ratio (‘OCR’)* 0.6%", True),  # F09: bracket and quote marks
+    ("OCF", "OCF6 0.73%", True),                                                   # F10: footnote 6
+    ("AIC operating expenses ratio", "AIC operating expenses ratio4", True),       # F14: footnote 4
+    ("Ongoing charges (year end 31 Aug 2025)", "Ongoing charges", False),          # F04: words missing from the quote
+    ("OCF", "OCF2026 0.73%", False),     # four digits aren't a footnote
+    ("OCF", "OCFS 0.73%", False),        # nor letters
+    ("()", "Ongoing charges () 0.5%", False),  # a label with no words
+])
+def test_labels_ignore_brackets_and_footnote_numbers(value, quote, ok):
+    fields = {"ongoing_charge_pct": Field("1", 1, "1%"), "charge_label": Field(value, 1, quote)}
+    run(fields, [quote + " 1%"])
+    assert (fields["charge_label"].value == value) == ok
+
+
+@pytest.mark.parametrize("quote, ok", [
+    ("SRRI1 4", True),     # F01 factsheet: footnote 1
+    ("SRRI 4", True),
+    ("SRRIs 4", False),    # not the name on its own
+    ("SRRI123 4", False),  # three digits aren't a footnote
+])
+def test_risk_method_short_name_with_a_footnote(quote, ok):
+    fields = {"risk_method": Field("SRRI", 1, quote)}
+    run(fields, [quote])
+    assert (fields["risk_method"].value == "SRRI") == ok
