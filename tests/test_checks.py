@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from fundcrosschecker.checks import check_fields, format_problem, printed_dates, to_number
+from fundcrosschecker.checks import check_fields, format_problem, printed_dates, to_number, value_in_quote
 from fundcrosschecker.common import NOT_FOUND, Field
 
 TODAY = date(2026, 10, 31)
@@ -319,3 +319,57 @@ def test_risk_method_short_name_with_a_footnote(quote, ok):
     fields = {"risk_method": Field("SRRI", 1, quote)}
     run(fields, [quote])
     assert (fields["risk_method"].value == "SRRI") == ok
+
+
+# --- from the code review of 1 Nov 2026 --------------------------------------------------
+
+@pytest.mark.parametrize("value, quote", [
+    ("2026-06-18", "Data as at1 8 June 2026"),   # a footnote ¹ (NFKC makes it 1) mustn't join the day
+    ("2026-06-28", "Page 2 8 June 2026"),        # nor a page number
+])
+def test_a_separate_number_in_front_doesnt_join_the_day(value, quote):
+    fields = {"doc_date": Field(value, 1, quote)}
+    run(fields, [quote])
+    assert fields["doc_date"].value == NOT_FOUND
+
+
+@pytest.mark.parametrize("value, quote, ok", [
+    ("0.73", "OngoingCharges0.73%", True),    # text that lost its spaces: a figure, not a footnote
+    ("0.65", "OCF0.65 %", True),
+    ("0.73", "Charges10.73%", False),         # still not the end of a longer number
+    ("1", "SRRI1 4", False),                  # no % after it: a footnote mark
+])
+def test_a_number_stuck_to_a_word_counts_only_with_a_percent_sign(value, quote, ok):
+    fields = {"ongoing_charge_pct": Field(value, 1, quote)}
+    run(fields, [quote])
+    assert (fields["ongoing_charge_pct"].value == value) == ok
+
+
+@pytest.mark.parametrize("value, quote, ok", [
+    ("Ongoing charges FY25", "Ongoing charges FY25 0.5%", True),   # digits in the label itself
+    ("OCF (Dec24)", "OCF (Dec24) 0.5%", True),
+    ("Ongoing charges FY24", "Ongoing charges FY25 0.5%", False),  # different digits aren't a footnote
+])
+def test_label_words_with_digits_match_exactly(value, quote, ok):
+    fields = {"ongoing_charge_pct": Field("1", 1, "1%"), "charge_label": Field(value, 1, quote)}
+    run(fields, [quote + " 1%"])
+    assert (fields["charge_label"].value == value) == ok
+
+
+@pytest.mark.parametrize("name, value, quote", [
+    ("share_class", "-", "Share class: -"),
+    ("fund_name", ".", "Fund facts."),
+    ("charge_label", "()", "Ongoing charges () 1%"),
+])
+def test_a_value_with_no_letters_or_digits_is_removed(name, value, quote):
+    fields = {"ongoing_charge_pct": Field("1", 1, "1%"), name: Field(value, 1, quote)}
+    run(fields, [quote + " 1%"])
+    assert fields[name].value == NOT_FOUND
+    assert format_problem(name, value, TODAY) == "no letters or digits"
+
+
+@pytest.mark.parametrize("value", ["", "()", "‘ ’"])
+def test_a_label_with_no_words_is_never_in_a_quote(value):
+    # check_fields stops these earlier ("empty", "no letters or digits"), but the quote check
+    # must hold on its own too: "every one of no words is in the quote" would be true.
+    assert not value_in_quote("charge_label", value, "Ongoing charges 0.5%")

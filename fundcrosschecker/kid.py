@@ -21,8 +21,10 @@ COST_FIELDS = ("ongoing_charge_pct", "charge_label", "transaction_cost_pct", "to
 # "Name" without a colon (F24) and "Product:" (F28).
 PRODUCT_LABEL = re.compile(r"^(?:(?:Product Name|Name of Product|Name)\b\s*:?|Product\s*:)\s*", re.IGNORECASE)
 # Every trust here is a company, so a cleanly read name ends like one: plc, p.l.c., Limited,
-# Ltd (F28) or Trust (F20), with or without a full stop after it (F26: "PLC.").
-COMPANY_ENDING = re.compile(r"(?:plc|p\.l\.c|limited|ltd|trust)\.?$", re.IGNORECASE)
+# Ltd (F28) or Trust (F20), as a whole word, with or without a full stop after it (F26:
+# "PLC."). "Trust" needs its capital, so "The Company is an investment trust" isn't a name.
+ENDING = r"\b(?:(?i:plc|p\.l\.c|limited|ltd)|Trust|TRUST)\.?"
+COMPANY_ENDING = re.compile(ENDING + "$")
 # A longer "name" is a sentence that happens to end like one, not a name.
 LONGEST_NAME = 80
 # A 12-character code shaped like an ISIN (its check digit is tested separately).
@@ -69,22 +71,32 @@ def _top_of_page1(page1: str) -> str:
 def _product_lines(page1: str) -> list[str]:
     """The product line first, then the lines after it, up to the line with the ISIN.
 
+    Only the top of page 1 counts, up to "What is this product?" (as for the ISIN).
     The product line is the first real line after the "Product" heading, in any case
     ("PRODUCT" on F27, F28); repeated headings and short bits of junk are skipped (F11
-    has "Product", "Product", "0B"). Without the heading (F09, F12, F14), it's the line
-    just before the first line with a valid ISIN. Empty if there's neither.
+    has "Product", "Product", "0B"). Without the heading (F09, F12, F14), it's the
+    line with the first valid ISIN if the name is printed in front of the code there,
+    or else the line just before it. Empty if there's neither.
     """
     lines = [line.strip() for line in page1.splitlines()]
+    top_end = next((i for i, line in enumerate(lines) if re.search(r"What is this product\?", line, re.IGNORECASE)),
+                   len(lines))
+    lines = lines[:top_end]
     isin_at = next((i for i, line in enumerate(lines)
                     if any(isin_is_valid(code) for code in re.findall(ISIN_SHAPE, line))), len(lines))
-    headings = [i for i, line in enumerate(lines) if line.casefold() == "product"]
-    if headings:
-        after = [line for line in lines[headings[0] + 1:] if line.casefold() != "product" and len(line) >= 4]
-        if not after:
+    heading = next((i for i, line in enumerate(lines) if line.casefold() == "product"), None)
+    if heading is not None:
+        first = next((i for i in range(heading + 1, len(lines))
+                      if lines[i].casefold() != "product" and len(lines[i]) >= 4), None)
+        if first is None:
             return []
-        start = lines.index(after[0], headings[0] + 1)
-        return [after[0]] + [line for line in lines[start + 1:isin_at] if len(line) >= 4]
-    if 0 < isin_at < len(lines) and len(lines[isin_at - 1]) >= 4:
+        return [lines[first]] + [line for line in lines[first + 1:isin_at] if len(line) >= 4]
+    if isin_at == len(lines):
+        return []
+    before_code = re.split(rf"\b(?:ISIN|Identifier|Product Code)\b|{ISIN_SHAPE}", lines[isin_at])[0]
+    if len(before_code.strip(" :")) >= 4:
+        return [lines[isin_at]]  # e.g. "Foo Growth Trust plc ISIN: GB00..."
+    if isin_at > 0 and len(lines[isin_at - 1]) >= 4:
         return [lines[isin_at - 1]]
     return []
 
@@ -97,8 +109,9 @@ def _name_and_share_class(page1: str, notes: list[str]) -> tuple[Field, Field]:
     in ..."), last (", Ordinary Shares", " - Income Shares" or just " ORDINARY
     SHARES" after the company ending, F14), straight after a bracket (F23: 'plc
     (the "Fund"), Ordinary Shares'), or alone on one of the next lines before the
-    ISIN (F25). A name that doesn't end like a company name, or is too long to be
-    one, is not used: not_found plus a note.
+    ISIN (F25). A name that doesn't end like a company name, is too long to be one,
+    or is another labelled detail (it still has a colon, or names the manufacturer)
+    is not used: not_found plus a note.
     """
     lines = _product_lines(page1)
     if not lines:
@@ -106,7 +119,7 @@ def _name_and_share_class(page1: str, notes: list[str]) -> tuple[Field, Field]:
 
     quote = normalise(lines[0])
     text = PRODUCT_LABEL.sub("", quote)
-    head = re.split(r"\s+\(|\s+ISIN\b", text)[0].strip()
+    head = re.split(rf"\s+\(|\s+(?:ISIN|Identifier|Product Code)\b|\s+{ISIN_SHAPE}", text)[0].strip()
     after_head = text[len(head):]
     text = head
     share, share_quote = None, quote
@@ -116,7 +129,7 @@ def _name_and_share_class(page1: str, notes: list[str]) -> tuple[Field, Field]:
         share, text = match.group(1), match.group(2)
     elif match := re.fullmatch(r"(.+?)(?:,| -| –)\s+(\w+ shares)", text, re.IGNORECASE):
         text, share = match.group(1), match.group(2)
-    elif match := re.fullmatch(r"(.+?(?:plc|p\.l\.c\.|limited|ltd))\s+(\w+ shares)", text, re.IGNORECASE):
+    elif match := re.fullmatch(rf"(.+?{ENDING})\s+(\w+ (?i:shares))", text):
         text, share = match.group(1), match.group(2)
     elif match := re.match(r"\s*\([^)]*\)\s*(?:,| -| –)\s*(\w+ shares)\b", after_head, re.IGNORECASE):
         share = match.group(1)
@@ -129,7 +142,8 @@ def _name_and_share_class(page1: str, notes: list[str]) -> tuple[Field, Field]:
                 share, share_quote = line, line
             break
 
-    if not COMPANY_ENDING.search(text) or len(text) > LONGEST_NAME:
+    another_detail = ":" in text or re.search(r"\bmanufacturer\b", text, re.IGNORECASE)
+    if not COMPANY_ENDING.search(text) or len(text) > LONGEST_NAME or another_detail:
         notes.append(f"Product line not understood: {quote}")
         return Field(NOT_FOUND), Field(NOT_FOUND)
     share_class = Field(share, 1, share_quote) if share else Field(NOT_FOUND)
@@ -176,8 +190,11 @@ def _costs(pages: list[str], notes: list[str]) -> dict[str, Field]:
     if not section:
         notes.append("No cost section found.")
         return missing
-    if any(re.search(COST_TABLE, text) for _, text in section):
-        return _cost_table(section, pages, notes)
+    if _has_cost_table(section):
+        fields = _cost_table(section, pages, notes)
+        if any(field.quote for field in fields.values()):
+            return fields
+        # Nothing could be read from it, so treat it like a KID without a table.
 
     # No cost table: transaction and total cost are not_found, and the ongoing
     # charge is the one stated in the cost section.
@@ -197,10 +214,10 @@ def _costs(pages: list[str], notes: list[str]) -> dict[str, Field]:
 
 # --- reading a cost table (Story 2.2, step 4) -------------------------------------
 
-# A figure in a cost table: a percentage (sometimes with a space before the %: "0 %" on F27,
-# "0.00 %" on F28), N/A, or a £ amount.
-FIGURE = r"(?<![\w.])(?:\d+(?:\.\d+)? ?%|N/A|n/a|£\s?[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)? GBP)"
+# A percentage, sometimes with a space before the %: "0 %" on F27, "0.00 %" on F28.
 PERCENT = r"\d+(?:\.\d+)? ?%"
+# A figure in a cost table: a percentage, N/A, or a £ amount.
+FIGURE = rf"(?<![\w.])(?:{PERCENT}|N/A|n/a|£\s?[\d,]+(?:\.\d+)?|[\d,]+(?:\.\d+)? GBP)"
 # The rows of the "Composition of costs" table, in capitals as printed, so the
 # same words inside a description ("No portfolio transaction costs ...") don't count.
 ROW_LABELS = {
@@ -212,9 +229,9 @@ ROW_LABELS = {
     "carried": r"Carried interests?",
 }
 ANY_ROW = "|".join(f"(?:{pattern})" for pattern in ROW_LABELS.values())
-# A KID has a cost table if it has the "Composition of costs" heading (any case: F28 has
-# "Composition of Costs"), or, without the heading (F20), an entry or ongoing row with its figure.
-COST_TABLE = (rf"(?i:Composition of costs)|(?:{ROW_LABELS['entry']}|{ROW_LABELS['ongoing']})\s+{FIGURE}")
+# The table's heading: "Composition of costs", or "Composition of Costs" (F28). Its capital C
+# stops a sentence such as "details of the composition of costs are ..." from counting.
+COMPOSITION = r"Composition of [Cc]osts"
 # The yearly total in the "Costs over time" table, followed by one figure per holding period:
 # "Annual cost impact", "Impact on return (RIY) per year", "Impact on return each year" (F24) or
 # "Reduction in Yield (RIY) per year" (F28).
@@ -222,13 +239,14 @@ TOTAL_ROW = (r"(?i:Annual cost impact(?: \(\*\))?"
              r"|(?:Impact on return|Reduction in Yield)(?: \(RIY\))? (?:per|each) year(?: \(%\))?)")
 # With no cost table, the ongoing charge the cost section states: "latest published Ongoing
 # Charge ... was 0.74%" (F15-F18), or "Ongoing Charges figure for the year to 31 ... 0.73%" (F26,
-# whose description column is mixed in), but not running on into the next charge's line.
+# whose description column is mixed in, in any case), but not running on into the next charge's
+# line or past the end of a sentence.
 NO_TABLE_CHARGES = (
-    r"latest published (Ongoing Charge)\b[^%]*? was (\d+(?:\.\d+)?)%",
-    r"(Ongoing Charges? figure)\b(?:(?!Ongoing Charge)[^%]){0,120}?(?<![\d.])(\d+(?:\.\d+)?) ?%",
+    r"latest published (Ongoing Charge)\b[^%]*? was (\d+(?:\.\d+)?) ?%",
+    r"(?i:(Ongoing Charges? figure))\b(?:(?!(?i:Ongoing Charge))[^%.;]){0,120}?(?<![\d.])(\d+(?:\.\d+)?) ?%",
 )
 # A charge given in the ongoing row's own description: "The OCF for the year to 31 August 2025 was 1.52%".
-DESCRIBED_CHARGE = r"The (OCF|OCR)\b[^%]{0,80}? was (\d+(?:\.\d+)?)%"
+DESCRIBED_CHARGE = r"The (OCF|OCR)\b[^%]{0,80}? was (\d+(?:\.\d+)?) ?%"
 
 
 def _cost_table(section: list[tuple[int, str]], pages: list[str], notes: list[str]) -> dict[str, Field]:
@@ -262,13 +280,25 @@ def _cost_table(section: list[tuple[int, str]], pages: list[str], notes: list[st
 
 
 def _composition(section: list[tuple[int, str]]) -> list[tuple[int, str]]:
-    """The cost section from "Composition of costs" onwards (any case), or the whole
-    section if it has no such heading (F20)."""
-    for i, (page_no, text) in enumerate(section):
-        start = re.search(r"Composition of costs", text, re.IGNORECASE)
-        if start:
-            return [(page_no, text[start.start():])] + section[i + 1:]
-    return section
+    """The cost section from its "Composition of costs" heading onwards. Without the
+    heading (F20), from the first entry or exit row with its figure, so a sentence
+    before the table ("Portfolio managers are paid ... 1.2%") isn't read as a row.
+    Empty if neither is there."""
+    first_row = rf"(?:{ROW_LABELS['entry']}|{ROW_LABELS['exit']})\s+{FIGURE}"
+    for start_at in (COMPOSITION, first_row):
+        for i, (page_no, text) in enumerate(section):
+            start = re.search(start_at, text)
+            if start:
+                return [(page_no, text[start.start():])] + section[i + 1:]
+    return []
+
+
+def _has_cost_table(section: list[tuple[int, str]]) -> bool:
+    """A cost table: the "Composition of costs" heading, or, without it (F20), rows of at
+    least two kinds with their figures. One row alone ("Entry costs 0% apply.") isn't enough."""
+    text = " ".join(text for _, text in section)
+    kinds = sum(re.search(rf"(?:{label})\s+{FIGURE}", text) is not None for label in ROW_LABELS.values())
+    return re.search(COMPOSITION, text) is not None or kinds >= 2
 
 
 def _row(table: list[tuple[int, str]], kind: str) -> tuple[int, str, str, str, str] | None:
@@ -325,7 +355,9 @@ def _full_label(label: str, page: str, page_no: int, notes: list[str]) -> Field:
     lines = [normalise(line) for line in page.splitlines()]
     for gap in (1, 2):
         for i, line in enumerate(lines[:-gap]):
-            if label in line and lines[i + gap].startswith("costs"):
+            rest = lines[i + gap]
+            # Two lines down, only a line that is just "costs" (F28), not a sentence starting with it.
+            if label in line and (rest.startswith("costs") if gap == 1 else rest == "costs"):
                 quote = " ".join([line[line.index(label):]] + lines[i + 1:i + gap] + ["costs"])
                 return Field(f"{label} costs", page_no, quote)
     notes.append(f"Couldn't read the whole row label starting {label!r}.")
@@ -350,7 +382,7 @@ def _total_cost(section: list[tuple[int, str]]) -> Field:
 CHARGE_WORDS = (r"(?:OCF|OCR|[Oo]ngoing [Cc]harges?(?: [Ff]igure| [Rr]atio)?|most recent figure"
                 r"|Operating Expense Ratio)")
 # From the nearest charge word to the figure: the match can't run over another charge word.
-STATED_CHARGE = rf"{CHARGE_WORDS}(?:(?!{CHARGE_WORDS})[^%]){{0,160}}?(?<![\d.])(\d+(?:\.\d+)?)%"
+STATED_CHARGE = rf"{CHARGE_WORDS}(?:(?!{CHARGE_WORDS})[^%]){{0,160}}?(?<![\d.])(\d+(?:\.\d+)?) ?%"
 
 
 def _charges_elsewhere(pages: list[str], ongoing: Field) -> list[str]:
@@ -405,10 +437,11 @@ DATE_WORDS = (r"Date of (?:document )?production(?: of (?:this document|the KID)
               r"|Publication Date|Document published|Last Updated On|version date of this KID is"
               r"|(?:document|KID)(?: \(KID\))? (?:is |was )?(?:dated|produced on|accurate as at"
               r"|accurate at its production date)")
-# The date after them, UK day first: 08/06/2026, 01-04-2025, 05.10.2026 or 8 June 2026. Up to 40
-# characters without digits can come in between (F27's columns put "found at http://fgen.com"
-# there), and one footnote digit can follow the year (F14: "31 July 20261").
-DOC_DATE = (rf"(?:{DATE_WORDS})\D{{0,40}}?(?<!\d)(?:(\d{{1,2}})[/.-](\d{{1,2}})[/.-](\d{{4}})"
+# The date after them, UK day first, in the forms the checks know (checks.printed_dates):
+# 08/06/2026, 01-04-2025 or 05.10.2026 (two-digit day and month, one kind of separator), or
+# 8 June 2026. Up to 40 characters without digits can come in between (F27's columns put
+# "found at http://fgen.com" there), and one footnote digit can follow the year (F14: "31 July 20261").
+DOC_DATE = (rf"(?:{DATE_WORDS})\D{{0,40}}?(?<!\d)(?:(\d{{2}})([/.-])(\d{{2}})\2(\d{{4}})"
             rf"|(\d{{1,2}}) ({'|'.join(MONTHS)}) (\d{{4}}))\d?(?!\d)")
 
 
@@ -419,10 +452,10 @@ def _doc_date(page1: str, notes: list[str]) -> Field:
         return Field(NOT_FOUND)
     _, match = found
     if match.group(1):
-        day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        day, month, year = int(match.group(1)), int(match.group(3)), int(match.group(4))
     else:
         month_names = [name.casefold() for name in MONTHS]
-        day, month, year = int(match.group(4)), month_names.index(match.group(5).casefold()) + 1, int(match.group(6))
+        day, month, year = int(match.group(5)), month_names.index(match.group(6).casefold()) + 1, int(match.group(7))
     try:
         return Field(date(year, month, day).isoformat(), 1, match.group(0))
     except ValueError:

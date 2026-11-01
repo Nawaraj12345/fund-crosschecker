@@ -66,6 +66,8 @@ def format_problem(name: str, value: str, today: date) -> str | None:
             return f"not between {EARLIEST_DATE} and today"
     if not value.strip():
         return "empty"  # an empty text is in every quote, so it would pass the quote check
+    if not re.search(r"[^\W_]", value):
+        return "no letters or digits"  # "-" or "." is in almost any quote too
     return None
 
 
@@ -99,29 +101,34 @@ def value_in_quote(name: str, value: str, quote: str) -> bool:
         return full_name in quote.lower() or re.search(rf"\b{short_name}\d{{0,2}}\b", quote) is not None
     if name in NUMBER_FIELDS:
         # The number on its own: "0.8" is in "0.8%", but not in "10.8%", "0.85%" or "-0.8%",
-        # "1" is not in "1.5%" or "£1,000", and a footnote number stuck to a word isn't a
-        # number at all ("1" in "SRRI1 4"). A figure the text layer splits ("1 .03%", F14
-        # factsheet) is joined up first.
+        # and "1" is not in "1.5%" or "£1,000". A number stuck to the end of a word is a
+        # footnote mark ("1" in "SRRI1 4"), unless a % follows it: then it's a figure in
+        # text that lost its spaces ("OngoingCharges0.73%"). A figure the text layer splits
+        # ("1 .03%", F14 factsheet) is joined up first.
         joined = re.sub(r"(?<=\d) +(?=\.\d)", "", quote)
-        return re.search(rf"(?<![\w.,\-−–]){re.escape(value)}(?!\d|[.,]\d)", joined) is not None
+        number = re.escape(value)
+        after_word = rf"(?<=[^\W\d_])(?={number} ?%)"
+        return re.search(rf"(?:(?<![\w.,\-−–])|{after_word}){number}(?!\d|[.,]\d)", joined) is not None
     if name == "charge_label":
         # The label's words must appear in the quote in order, but not side by side: a label
         # can wrap onto the next line of its table cell ("Other ongoing", then "costs" on F09).
-        # Brackets and quote marks don't count ("Ratio ('OCR')"), and a footnote number stuck
-        # to a word is allowed ("OCF6", "ratio4" on factsheets).
+        # Brackets and quote marks don't count ("Ratio ('OCR')"), and a quote word may carry
+        # a footnote number the label doesn't have ("OCF6", "ratio4" on factsheets).
+        in_quote = iter(words(quote))
         wanted = words(value)
-        in_quote = iter(words(quote, footnotes=True))
-        return bool(wanted) and all(word in in_quote for word in wanted)  # `in` moves along the quote
+        return bool(wanted) and all(any(same_word(word, found) for found in in_quote) for word in wanted)
     return normalise(value) in quote
 
 
-def words(text: str, footnotes: bool = False) -> list[str]:
-    """The words of a text, in lower case and without punctuation. With footnotes=True,
-    a footnote number stuck to the end of a word is dropped: "OCF6" becomes "ocf"."""
-    found = re.findall(r"[^\W_]+", normalise(text).casefold())
-    if footnotes:
-        found = [re.sub(r"^([^\W\d_]{2,})\d{1,2}$", r"\1", word) for word in found]
-    return found
+def words(text: str) -> list[str]:
+    """The words of a text, in lower case and without punctuation."""
+    return re.findall(r"[^\W_]+", normalise(text).casefold())
+
+
+def same_word(label_word: str, quote_word: str) -> bool:
+    """The same word, or the quote's word with a footnote number stuck to its end
+    ("ocf6" for "ocf"). A label word with digits must match exactly: "fy25" isn't "fy24"."""
+    return quote_word == label_word or re.sub(r"^([^\W\d_]{2,})\d{1,2}$", r"\1", quote_word) == label_word
 
 
 def printed_dates(iso: str) -> list[str]:
@@ -142,11 +149,12 @@ def date_in_quote(printed: str, quote: str) -> bool:
     It mustn't be the end of a longer number: 8 June 2026 isn't in "18 June 2026". After
     the year, one footnote digit is allowed (F14 KID: "31 July 20261"), but not two.
     If the text layer lost its spaces ("Factsheetasof30September2026", F19 factsheet),
-    the date is also looked for with every space removed.
+    the date is also looked for without its own spaces. The quote's spaces stay, so a
+    separate number in front can't join the day: "Page 2 8 June 2026" isn't 28 June.
     """
-    def found(date_text: str, text: str) -> bool:
-        return re.search(rf"(?<!\d){re.escape(date_text)}(?!\d\d)", text, re.IGNORECASE) is not None
-    return found(printed, quote) or found(printed.replace(" ", ""), quote.replace(" ", ""))
+    def found(date_text: str) -> bool:
+        return re.search(rf"(?<!\d){re.escape(date_text)}(?!\d\d)", quote, re.IGNORECASE) is not None
+    return found(printed) or found(printed.replace(" ", ""))
 
 
 def to_number(value: str) -> float | None:

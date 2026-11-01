@@ -391,10 +391,19 @@ def test_two_columns_run_together_give_not_found_and_a_note():  # F29
 
 
 def test_a_sentence_that_ends_like_a_name_is_too_long_to_be_one():
-    line = "This document gives you key information about an investment company that is run as an investment trust"
+    # Ends with a real company ending ("Limited") and has no label, so only its length gives it away.
+    line = "This document gives you key information about an investment company managed by Foo Fund Managers Limited"
     notes = []
     name, _ = kid._name_and_share_class(f"Product\n{line}", notes)
     assert name.value == NOT_FOUND and notes
+
+
+@pytest.mark.parametrize("length, ok", [(80, True), (81, False)])
+def test_the_longest_name_allowed(length, ok):
+    line = "A" * (length - len(" Holdings plc")) + " Holdings plc"
+    assert len(line) == length
+    name, _ = kid._name_and_share_class(f"Product\n{line}", [])
+    assert (name.value == line) == ok
 
 
 def test_a_long_phrase_before_shares_in_isnt_a_share_class():
@@ -501,6 +510,7 @@ def test_no_table_ongoing_charges_figure_with_the_description_mixed_in():  # F26
 
 @pytest.mark.parametrize("text", [
     "Ongoing Charges figure, see the annual report. Ongoing Charge history is on the website. 0.73%",  # runs into another charge
+    "Ongoing Charges figure, see the annual report, Ongoing Charge history on the website 0.73%",  # the same, no sentence end
     "Ongoing Charges figure " + "and more words " * 10 + "0.73%",                                       # too far away
 ])
 def test_no_table_charge_too_far_away_or_past_another_charge_is_not_used(text):
@@ -523,3 +533,115 @@ def test_label_not_completed_three_lines_down():
     fields, notes = costs(page)
     assert fields["charge_label"].value == NOT_FOUND
     assert any("Couldn't read the whole row label" in note for note in notes)
+
+
+# --- from the code review of 1 Nov 2026 --------------------------------------------------
+
+@pytest.mark.parametrize("page, name", [
+    ("Key Information Document\nPRIIP Manufacturer: Foo Fund Managers Limited\nFoo Growth Trust plc ISIN: GB00BS88V647",
+     "Foo Growth Trust plc"),                                   # the name is on the ISIN line itself
+    ("Key Information Document\nPRIIP Manufacturer: Foo Fund Managers Limited\nISIN: GB00BS88V647", NOT_FOUND),
+    ("Key Information Document\nManufacturer Foo Fund Managers Limited\nGB00BS88V647", NOT_FOUND),
+    ("Key Information Document\nWhat is this product?\nThe Company invests in Bar Holdings plc\nGB00BS88V647", NOT_FOUND),
+])
+def test_without_the_heading_a_manufacturer_or_a_later_sentence_isnt_the_name(page, name):
+    assert kid._name_and_share_class(page, [])[0].value == name
+
+
+@pytest.mark.parametrize("line", [
+    "The Company is an investment trust",   # "trust" without its capital
+    "Antitrust",                            # the same, inside a word
+    "Holding period unlimited",             # "limited" not as a whole word
+    "Shares: Foo Growth Trust plc",         # still a labelled detail
+])
+def test_lines_that_only_seem_to_end_like_a_company(line):
+    notes = []
+    assert kid._name_and_share_class(f"Product\n{line}", notes)[0].value == NOT_FOUND
+    assert notes
+
+
+@pytest.mark.parametrize("line, name, share_class", [
+    ("Foo Growth Trust ORDINARY SHARES", "Foo Growth Trust", "ORDINARY SHARES"),
+    ("Foo Growth p.l.c ORDINARY SHARES", "Foo Growth p.l.c", "ORDINARY SHARES"),
+])
+def test_share_class_after_every_kind_of_company_ending(line, name, share_class):
+    name_field, share_field = kid._name_and_share_class(f"Product\n{line}", [])
+    assert (name_field.value, share_field.value) == (name, share_class)
+
+
+@pytest.mark.parametrize("text", [
+    "The latest published Ongoing Charge for the Company was 0.74%. Details of the composition of costs are in "
+    "the annual report.",                                       # "composition of costs" in a sentence
+    "The latest published Ongoing Charge for the Company was 0.74%. Entry costs 0% apply.",  # one row alone
+])
+def test_a_mention_of_a_table_doesnt_hide_the_stated_charge(text):
+    # The yearly total is there too, as in every KID: if the text were taken for a table,
+    # the total alone would be read and the stated charge never looked for.
+    fields, notes = costs(f"What are the costs? Annual cost impact (*) 1.0% 1.0% each year. {text} "
+                          "How long should I hold it")
+    assert fields["ongoing_charge_pct"].value == "0.74"
+    assert notes == ["No cost table: ongoing charge taken from the cost section."]
+
+
+def test_without_the_heading_the_table_starts_at_its_first_row():
+    fields, _ = costs("What are the costs? Impact on return (RIY) per year 1.2% 1.2% Portfolio managers are paid from "
+                      "the fund. 1.2% Entry costs 0% None. Other ongoing costs 0.50% x. How long should I hold it")
+    assert fields["transaction_cost_pct"].value == NOT_FOUND   # the sentence before the table isn't a row
+    assert fields["ongoing_charge_pct"].value == "0.50"
+
+
+def test_without_the_heading_or_an_entry_or_exit_row_nothing_is_read_as_a_row():
+    # Rows of two kinds make it a table, but with no heading and no entry or exit row there's
+    # no safe place to start it, so a sentence ("Portfolio managers ... 1.2%") isn't read as
+    # the transaction row. Missing rather than wrong: the other rows are lost too.
+    fields, _ = costs("What are the costs? Portfolio managers are paid from the fund. 1.2% a year. "
+                      "Performance fees 0% Other ongoing costs 0.50% x. How long should I hold it")
+    assert fields["transaction_cost_pct"].value == NOT_FOUND
+
+
+@pytest.mark.parametrize("text", [
+    "Date of Production: 8/6/2026",      # one-digit day and month: not a form the checks know
+    "Last Updated On 5.10.2026",
+    "Date of Production: 08/06-2026",     # two kinds of separator
+])
+def test_dates_the_checks_wouldnt_accept_arent_read(text):
+    assert kid._doc_date(text, []).value == NOT_FOUND
+
+
+@pytest.mark.parametrize("text, value", [
+    ("Ongoing Charges figure for the year to 31 December 2025 is shown on page 2; 3 % of the fund.", NOT_FOUND),
+    ("Ongoing Charges figure for 2025 is in the report. Fees 0.73%", NOT_FOUND),   # past a sentence end
+    ("ONGOING CHARGES FIGURE 0.73%", "0.73"),                                      # capitals
+])
+def test_no_table_charge_stays_in_its_sentence_and_ignores_case(text, value):
+    fields, _ = costs(f"What are the costs? {text} How long should I hold it")
+    assert fields["ongoing_charge_pct"].value == value
+
+
+def test_charges_with_a_space_before_the_percent_sign_are_read_and_noted():
+    assert kid._charges_elsewhere(["The OCF was 1.74 % for 2025"], kid.Field(NOT_FOUND)) == [
+        'Charge given outside the cost row: 1.74% on page 1 ("OCF was 1.74 %").']
+    fields, _ = costs("What are the costs? The latest published Ongoing Charge for the Company was 0.74 %. "
+                      "How long should I hold it")
+    assert fields["ongoing_charge_pct"].value == "0.74"
+
+
+def test_label_not_completed_from_a_sentence_two_lines_down():
+    page = "Other ongoing\n0.40% Fees for the year\ncosts of running the company are high"
+    notes = []
+    assert kid._full_label("Other ongoing", page, 1, notes).value == NOT_FOUND
+    assert notes
+
+
+def test_described_charge_with_a_space_before_the_percent_sign():  # F04's layout, "1.52 %"
+    fields, _ = costs("What are the costs? Composition of costs\nManagement fees and other No fees are payable; these "
+                      "are 152 GBP\nadministrative or operating costs. The OCF for the year to 31 August 2025 was 1.52 %.\n"
+                      "How long should I hold it")
+    assert (fields["ongoing_charge_pct"].value, fields["charge_label"].value) == ("1.52", "OCF")
+
+
+def test_a_heading_with_no_readable_rows_falls_back_to_the_stated_charge():
+    fields, notes = costs("What are the costs? Composition of costs: see the annual report. The latest published "
+                          "Ongoing Charge for the Company was 0.74%. How long should I hold it")
+    assert fields["ongoing_charge_pct"].value == "0.74"
+    assert notes == ["No cost table: ongoing charge taken from the cost section."]
