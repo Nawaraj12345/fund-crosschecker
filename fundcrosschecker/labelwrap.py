@@ -21,6 +21,10 @@ bracket when the layout leaves no doubt:
 The longer label then needs a quote from the page text that holds all its words in
 order, by the quote check's own rule, starting where the label's quote is printed.
 Anything less clear-cut leaves the label as it was.
+
+Before the checks, the same layout reading also confirms a bracket Claude did give but
+quoted only in part (F04), so the quote check doesn't remove a right answer
+(`confirm_claimed_bracket`). Both run from factsheet.extract, which has the PDF's path.
 """
 
 import re
@@ -61,6 +65,42 @@ def extend_label(fields: dict[str, Field], notes: list[str], path: Path, pages: 
     fields["charge_label"] = Field(longer, label.page, quote)
     notes.append(f"charge_label: {bracket!r} added, printed under {label.value!r} on page {label.page} "
                  "(the label wraps onto the next line).")
+
+
+def confirm_claimed_bracket(fields: dict[str, Field], notes: list[str], path: Path, pages: list[str]) -> None:
+    """Before the checks: lengthen the label's quote when the layout confirms its bracket.
+
+    Claude sometimes gives the whole label, bracket included, but quotes only its first
+    line: F04's "Ongoing charges (year end 31 Aug 2025)" quoted as "Ongoing charges". The
+    quote check would then remove a right answer. If the layout shows exactly that bracket
+    under the rest of the label (by the same rules as `wrapped_bracket`), the quote is
+    lengthened to a piece of the page text holding the whole label, and the checks then
+    judge the label as they would any answer. Otherwise nothing changes.
+    """
+    label, charge = fields.get("charge_label"), fields.get("ongoing_charge_pct")
+    if not label or not charge or NOT_FOUND in (label.value, charge.value) or not label.quote:
+        return
+    claim = re.fullmatch(r"(.+?) (\([^()]+\))", label.value.strip())
+    if not claim or not label.page or not 1 <= label.page <= len(pages):
+        return
+    base, bracket = claim.groups()
+    quote, page_text = normalise(label.quote), normalise(pages[label.page - 1])
+    if value_in_quote("charge_label", label.value, quote) or not value_in_quote("charge_label", base, quote):
+        return  # the quote already holds the whole label, or not even the rest of it: the checks decide
+    try:
+        with pdfplumber.open(path) as pdf:
+            seen = wrapped_bracket(pdf.pages[label.page - 1].extract_words(), base, charge.value)
+    except Exception as error:  # an odd page shouldn't stop the document being read
+        notes.append(f"The charge label's layout couldn't be read ({type(error).__name__}).")
+        return
+    if seen is None or words(seen) != words(bracket):
+        return  # the layout doesn't show that bracket under the label
+    joined = joining_quote(page_text, quote, label.value)
+    if joined is None:
+        return
+    fields["charge_label"] = Field(label.value, label.page, joined)
+    notes.append(f"charge_label: the quote was lengthened to hold {bracket!r}, which is printed under "
+                 f"{base!r} on page {label.page} (the label wraps onto the next line).")
 
 
 def wrapped_bracket(page_words: list[dict], label: str, figure: str) -> str | None:

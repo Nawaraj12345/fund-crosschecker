@@ -32,7 +32,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import compare, factsheet, kid, kiid, labelwrap, output, riskscale, score
+from . import compare, factsheet, kid, kiid, output, riskscale, score
 from .pdftext import read_pages
 
 OUTPUT = Path(__file__).resolve().parent.parent / "output"
@@ -40,9 +40,6 @@ LABELS = {"kid": "KID", "kiid": "KIID", "factsheet": "factsheet"}  # how each do
 # Documents whose risk score can come from the scale graphic when the text doesn't give it
 # (riskscale.py). Not KIIDs: all five give theirs in the text.
 GRAPHIC_RISK = ("kid", "factsheet")
-# Documents whose charge label can get back a bracket that wraps onto the line below
-# (labelwrap.py). Not KIDs: their rules join a wrapped label themselves.
-WRAPPED_LABELS = ("factsheet",)
 
 
 def pdf_files(paths: list[Path], doc_type: str) -> tuple[list[Path], int]:
@@ -111,19 +108,19 @@ def main() -> int:
         return score.run()
 
     if args.command == "kid":
-        return extract_all(args.paths, "kid", lambda pages, sha256: kid.extract(pages))
+        return extract_all(args.paths, "kid", lambda pages, sha256, path: kid.extract(pages))
     if args.command == "kiid":
-        return extract_all(args.paths, "kiid", lambda pages, sha256: kiid.extract(pages))
+        return extract_all(args.paths, "kiid", lambda pages, sha256, path: kiid.extract(pages))
 
     import anthropic  # only the factsheet command needs it
 
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY; only used for answers that aren't cached
     return extract_all(args.paths, "factsheet",
-                       lambda pages, sha256: factsheet.extract(pages, sha256, client, OUTPUT / "llm"))
+                       lambda pages, sha256, path: factsheet.extract(pages, sha256, client, OUTPUT / "llm", path))
 
 
 def extract_all(paths: list[Path], doc_type: str, extract) -> int:
-    """Run `extract(pages, sha256)` on each file, then write the JSON files, the CSV and a table per document."""
+    """Run `extract(pages, sha256, path)` on each file, then write the JSON files, the CSV and a table per document."""
     files, failed = pdf_files(paths, doc_type)
     if not files:
         print(f"No {LABELS[doc_type]} files to read, so the CSV was left as it was.", file=sys.stderr)
@@ -141,9 +138,7 @@ def extract_all(paths: list[Path], doc_type: str, extract) -> int:
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         try:  # one bad PDF shouldn't stop the others
             pages = read_pages(path)
-            fields, notes = extract(pages, sha256)
-            if doc_type in WRAPPED_LABELS:
-                labelwrap.extend_label(fields, notes, path, pages)
+            fields, notes = extract(pages, sha256, path)
             if doc_type in GRAPHIC_RISK:
                 riskscale.fill_from_graphic(fields, notes, path)
         except Exception as error:

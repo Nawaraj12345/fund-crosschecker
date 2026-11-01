@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-import fundcrosschecker.__main__ as cli
 from fundcrosschecker import labelwrap
 from fundcrosschecker.checks import check_fields
 from fundcrosschecker.common import NOT_FOUND, Field
@@ -237,16 +236,77 @@ def test_joining_quote():
     assert labelwrap.joining_quote(page, "Ongoing charges ratio", label + " (more)") is None
 
 
-@pytest.mark.parametrize("doc_type, read", [("factsheet", True), ("kid", False), ("kiid", False)])
-def test_which_documents_use_it(tmp_path, monkeypatch, doc_type, read):
-    (tmp_path / f"F01_{doc_type}.pdf").write_bytes(b"%PDF fake")
-    monkeypatch.setattr(cli, "OUTPUT", tmp_path / "output")
-    monkeypatch.setattr(cli, "read_pages", lambda path: ["page one"])
-    monkeypatch.setattr(cli.riskscale, "fill_from_graphic", lambda fields, notes, path: None)
-    calls = []
-    monkeypatch.setattr(labelwrap, "extend_label", lambda fields, notes, path, pages: calls.append((path.name, pages)))
-    cli.extract_all([tmp_path], doc_type, lambda pages, sha: ({"fund_name": Field(NOT_FOUND)}, []))
-    assert calls == ([(f"F01_{doc_type}.pdf", ["page one"])] if read else [])
+# --- confirm_claimed_bracket: a bracket Claude gave but quoted only in part (F04) ------------
+
+F04_WORDS = (line(428.0, ("Ongoing", 650, 680), ("charges", 682, 712)) + line(432.0, ("1.12%", 740, 760))
+             + line(437.0, ("(year", 650, 668), ("end", 670, 684), ("31", 686, 695), ("Aug", 697, 711), ("2025)", 713, 732))
+             + line(452.0, ("Benchmark", 650, 690), ("-", 740, 744)))
+F04_TEXT = "Ongoing charges 1.12%\n(year end 31 Aug 2025)\nBenchmark -"
+F04_LABEL = "Ongoing charges (year end 31 Aug 2025)"
+
+
+def f04_fields(label=F04_LABEL, quote="Ongoing charges", page=1):
+    return {"ongoing_charge_pct": Field("1.12", 1, "1.12%"), "charge_label": Field(label, page, quote)}
+
+
+def confirm_then_check(monkeypatch, fields, page_words=F04_WORDS, text=F04_TEXT):
+    monkeypatch.setattr(labelwrap.pdfplumber, "open", lambda path: FakePdf(page_words))
+    notes = []
+    labelwrap.confirm_claimed_bracket(fields, notes, Path("F04_factsheet.pdf"), [text])
+    check_fields(fields, [text], notes, date(2026, 11, 1))
+    return notes
+
+
+def test_a_claimed_bracket_the_layout_shows_is_kept(monkeypatch):
+    fields = f04_fields()
+    notes = confirm_then_check(monkeypatch, fields)
+    assert fields["charge_label"] == Field(F04_LABEL, 1, "Ongoing charges 1.12% (year end 31 Aug 2025)")
+    assert notes == ["charge_label: the quote was lengthened to hold '(year end 31 Aug 2025)', which is printed "
+                     "under 'Ongoing charges' on page 1 (the label wraps onto the next line)."]
+
+
+def test_without_it_the_checks_remove_the_label(monkeypatch):
+    fields, notes = f04_fields(), []
+    check_fields(fields, [F04_TEXT], notes, date(2026, 11, 1))
+    assert fields["charge_label"].value == NOT_FOUND
+
+
+@pytest.mark.parametrize("fields, page_words", [
+    (f04_fields(label="Ongoing charges (year end 31 Aug 2024)"), F04_WORDS),   # the layout shows another bracket
+    (f04_fields(), F04_WORDS[:3]),                                             # no bracket under the label
+    (f04_fields(quote="Charges 1.12%"), F04_WORDS),                            # the quote lacks even "Ongoing"
+    (f04_fields(quote="not on the page"), F04_WORDS),                          # the quote isn't on the page
+    (f04_fields(page=2), F04_WORDS),                                           # no such page
+])
+def test_a_claim_the_layout_doesnt_back_is_still_removed(monkeypatch, fields, page_words):
+    notes = confirm_then_check(monkeypatch, fields, page_words)
+    assert fields["charge_label"].value == NOT_FOUND
+    assert not any("lengthened" in note for note in notes)
+
+
+@pytest.mark.parametrize("fields", [
+    f04_fields(label="Ongoing charges"),                                       # no bracket claimed
+    f04_fields(quote="Ongoing charges 1.12% (year end 31 Aug 2025)"),          # the quote already holds it all
+    f04_fields(label=NOT_FOUND),
+    {"ongoing_charge_pct": Field(NOT_FOUND), "charge_label": Field(F04_LABEL, 1, "Ongoing charges")},
+    {},
+])
+def test_confirm_leaves_these_alone(monkeypatch, fields):
+    def no_pdf(path):
+        raise AssertionError("the layout shouldn't be read")
+    monkeypatch.setattr(labelwrap.pdfplumber, "open", no_pdf)
+    before, notes = dict(fields), []
+    labelwrap.confirm_claimed_bracket(fields, notes, Path("F04_factsheet.pdf"), [F04_TEXT])
+    assert fields == before and notes == []
+
+
+def test_confirm_with_an_unreadable_pdf(monkeypatch):
+    def broken(path):
+        raise ValueError("not a PDF")
+    monkeypatch.setattr(labelwrap.pdfplumber, "open", broken)
+    fields, notes = f04_fields(), []
+    labelwrap.confirm_claimed_bracket(fields, notes, Path("F04_factsheet.pdf"), [F04_TEXT])
+    assert fields == f04_fields() and notes == ["The charge label's layout couldn't be read (ValueError)."]
 
 
 # --- the real documents ------------------------------------------------------------------
@@ -296,3 +356,31 @@ def test_on_every_factsheet_it_only_adds_what_the_answer_key_has():
                     assert f"{base} {bracket}" == row["charge_label"], row["fund_id"]
                     fired.add(row["fund_id"])
     assert fired == {"F03", "F04", "F11", "F24"}
+
+
+def test_only_a_quote_holding_the_start_of_the_label_is_lengthened(monkeypatch):
+    # Claude quoted the heading above the label: the label isn't in its quote at all, so it
+    # isn't stretched to reach it, even though the layout shows the bracket.
+    text = "Key facts\n" + F04_TEXT
+    fields = f04_fields(quote="Key facts")
+    notes = confirm_then_check(monkeypatch, fields, text=text)
+    assert fields["charge_label"].value == NOT_FOUND
+    assert not any("lengthened" in note for note in notes)
+
+
+def test_a_claim_must_match_the_bracket_under_the_label(monkeypatch):
+    # The claimed "(to 2024)" is printed on the page, but not under the label: the layout shows
+    # "(year end 31 Aug 2025)" there, so the claim isn't backed and the checks remove it.
+    text = F04_TEXT + " Performance (to 2024)"
+    fields = f04_fields(label="Ongoing charges (to 2024)")
+    notes = confirm_then_check(monkeypatch, fields, text=text)
+    assert fields["charge_label"].value == NOT_FOUND
+    assert not any("lengthened" in note for note in notes)
+
+
+def test_a_bracket_the_text_layer_doesnt_hold(monkeypatch):
+    # The layout shows the bracket, but the page text has no piece holding the whole label.
+    fields = f04_fields()
+    notes = confirm_then_check(monkeypatch, fields, text="Ongoing charges 1.12%\nBenchmark -")
+    assert fields["charge_label"].value == NOT_FOUND
+    assert not any("lengthened" in note for note in notes)

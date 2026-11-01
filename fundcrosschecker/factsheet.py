@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from . import labelwrap
 from .checks import check_fields
 from .common import NOT_FOUND, Field
 
@@ -106,10 +107,13 @@ class FactsheetAnswers(BaseModel):
     doc_date: Answer
 
 
-def extract(pages: list[str], pdf_sha256: str, client, cache_dir: Path) -> tuple[dict[str, Field], list[str]]:
+def extract(pages: list[str], pdf_sha256: str, client, cache_dir: Path,
+            path: Path | None = None) -> tuple[dict[str, Field], list[str]]:
     """Return the factsheet's fields (keyed by answer key column, in its order) and notes.
 
     `client` is an anthropic.Anthropic(); it's only used when the answer isn't cached.
+    With the PDF's `path`, the charge label's layout is read too (labelwrap.py): a bracket
+    Claude gives but quotes only in part, and one it leaves out, when printed under the label.
     """
     if not pages:
         raise ValueError("the PDF has no pages")
@@ -121,7 +125,11 @@ def extract(pages: list[str], pdf_sha256: str, client, cache_dir: Path) -> tuple
             answer = answers[name]
             # An empty value would pass the quote check (it's "in" every quote), so it counts as not_found.
             fields[name] = Field(answer["value"].strip() or NOT_FOUND, answer["page"], answer["quote"])
+    if path is not None:
+        labelwrap.confirm_claimed_bracket(fields, notes, path, pages)
     check_fields(fields, pages, notes)
+    if path is not None:
+        labelwrap.extend_label(fields, notes, path, pages)
     return fields, notes
 
 

@@ -216,3 +216,16 @@ def test_every_answer_key_field_is_asked_for():
 def test_empty_pdf_is_an_error(tmp_path):
     with pytest.raises(ValueError):
         run(FakeClient(good_answers()), tmp_path, pages=[])
+
+
+def test_the_layout_steps_run_around_the_checks_only_with_a_path(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(factsheet.labelwrap, "confirm_claimed_bracket", lambda fields, notes, path, pages: calls.append("confirm"))
+    monkeypatch.setattr(factsheet, "check_fields", lambda fields, pages, notes: calls.append("checks"))
+    monkeypatch.setattr(factsheet.labelwrap, "extend_label", lambda fields, notes, path, pages: calls.append("extend"))
+    client = FakeClient(good_answers())
+    factsheet.extract(PAGES, SHA, client, tmp_path / "llm", tmp_path / "F16_factsheet.pdf")
+    assert calls == ["confirm", "checks", "extend"]
+    calls.clear()
+    factsheet.extract(PAGES, SHA, client, tmp_path / "llm")  # no PDF to read the layout from
+    assert calls == ["checks"]

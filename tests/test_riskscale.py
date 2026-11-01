@@ -196,7 +196,7 @@ def test_which_documents_use_the_graphic(tmp_path, monkeypatch, doc_type, read):
     monkeypatch.setattr(cli, "read_pages", lambda path: ["page one"])
     calls = []
     monkeypatch.setattr(riskscale, "fill_from_graphic", lambda fields, notes, path: calls.append(path.name))
-    cli.extract_all([tmp_path], doc_type, lambda pages, sha: (fields_with_risk(NOT_FOUND), []))
+    cli.extract_all([tmp_path], doc_type, lambda pages, sha, path: (fields_with_risk(NOT_FOUND), []))
     assert calls == ([f"F01_{doc_type}.pdf"] if read else [])
 
 
