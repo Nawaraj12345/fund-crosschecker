@@ -215,12 +215,15 @@ def test_same_day_and_kid_newer_in_the_report(capsys):
 # --- the comparison logic reproduces the hand-written key ----------------------------------
 
 # The figures the KIDs give outside their cost rows, each checked in the PDF (Story 3.1).
-TEXT_FIGURES = {"F06": ["0.77"], "F10": ["0.73"], "F11": ["0.67"], "F13": ["1.35"], "F14": ["1.03", "1.10"], "F19": ["0.74"]}
+TEXT_FIGURES = {"F06": ["0.77"], "F10": ["0.73"], "F11": ["0.67"], "F13": ["1.35"], "F14": ["1.03", "1.10"], "F19": ["0.74"],
+                "F23": ["1.05"], "F25": ["0.35"], "F26": ["0.59"], "F28": ["1.74"]}
 
 
 def test_the_logic_on_the_answer_keys_values_gives_the_comparison_key():
-    with (PROJECT / "data" / "answer_key.csv").open(encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+    rows = []
+    for path in (PROJECT / "data" / "answer_key.csv", PROJECT / "data" / "unseen" / "answer_key.csv"):
+        with path.open(encoding="utf-8") as f:
+            rows += list(csv.DictReader(f))
     for row in rows:
         row["notes"] = elsewhere(*TEXT_FIGURES.get(row["fund_id"], [])) if row["doc_type"] == "kid" else ""
     comparisons, problems = compare.compare_all([r for r in rows if r["doc_type"] == "factsheet"],
@@ -231,7 +234,7 @@ def test_the_logic_on_the_answer_keys_values_gives_the_comparison_key():
             for c in comparisons]
     key = compare.read_csv(compare.COMPARISON_KEY)
     counts, not_compared, details = compare.score_comparison(tool, key)
-    assert (counts["correct"], counts["reasons right"], not_compared, details) == (38, 38, [], [])
+    assert (counts["correct"], counts["reasons right"], not_compared, details) == (58, 58, [], [])
 
 
 # --- scoring ---------------------------------------------------------------------------------
